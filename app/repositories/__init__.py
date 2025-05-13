@@ -1,0 +1,4 @@
+from .doctor_repository import DoctorRepository
+from .hospital_repository import HospitalRepository
+from .shift_repository import ShiftRepository
+from .payment_repository import PaymentRepository
