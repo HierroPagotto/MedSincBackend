@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Date, Time, ForeignKey, Numeric
+from sqlalchemy import Column, Integer, String, DateTime, Date, Time, ForeignKey, Numeric, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import db
@@ -12,6 +12,8 @@ class Shift(db.Model):
     doctor_id = Column(Integer, ForeignKey("doctors.id"), nullable=False)
     hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
     date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=True)
+    week_days = Column(JSON, nullable=True)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
     value = Column(Numeric(10, 2), nullable=False)

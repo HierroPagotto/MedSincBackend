@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from app.models.payment import Payment
 from app.schemas.payment import PaymentCreate
 from datetime import datetime
+import pytz
 
 class PaymentRepository:
     model = Payment
@@ -19,7 +20,8 @@ class PaymentRepository:
     def update_status(self, db: Session, payment: Payment, status: str) -> Payment:
         payment.status = status
         if status == "paid":
-            payment.payment_date = datetime.utcnow()
+            brazil_tz = pytz.timezone('America/Sao_Paulo')
+            payment.payment_date = datetime.now(brazil_tz).date()
         db.commit()
         db.refresh(payment)
         return payment

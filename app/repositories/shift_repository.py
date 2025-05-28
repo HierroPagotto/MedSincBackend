@@ -3,6 +3,7 @@ from app.models.shift import Shift
 from app.schemas.shift import ShiftCreate
 from sqlalchemy.orm import joinedload
 from datetime import datetime, timedelta
+import pytz
 from sqlalchemy import func, extract, and_, or_
 from sqlalchemy.sql import label
 
@@ -10,11 +11,44 @@ class ShiftRepository:
     model = Shift
     
     def create(self, db: Session, shift: ShiftCreate, doctor_id: int) -> Shift:
-        db_shift = Shift(**vars(shift), doctor_id=doctor_id, status="scheduled")
+        shift_data = vars(shift)
+
+        shift_data['doctor_id'] = doctor_id
+        shift_data['status'] = "scheduled"
+        
+        db_shift = Shift(**shift_data)
         db.add(db_shift)
         db.commit()
         db.refresh(db_shift)
         return db_shift
+        
+    def create_multiple_shifts(self, db: Session, shift_data: dict, doctor_id: int) -> list:
+        """Cria múltiplos plantões baseados em dias da semana selecionados"""
+        result_shifts = []
+        
+        if shift_data.get('week_days') and isinstance(shift_data['week_days'], list):
+            for day in shift_data['week_days']:
+                single_shift_data = shift_data.copy()
+                
+                try:
+                    from datetime import datetime
+                    single_shift_data['date'] = datetime.strptime(day, '%Y-%m-%d').date()
+                except ValueError:
+                    continue
+                
+                del single_shift_data['week_days']
+                if 'end_date' in single_shift_data:
+                    del single_shift_data['end_date']
+                
+                shift = ShiftCreate(**single_shift_data)
+                db_shift = self.create(db, shift, doctor_id)
+                result_shifts.append(db_shift)
+                
+            return result_shifts
+        else:
+            shift = ShiftCreate(**shift_data)
+            db_shift = self.create(db, shift, doctor_id)
+            return [db_shift]
 
     def get_by_doctor(self, db: Session, doctor_id: int):
         return (
@@ -28,7 +62,8 @@ class ShiftRepository:
         return db.query(Shift).filter(Shift.id == shift_id).first()
     
     def get_dashboard_stats(self, db: Session, doctor_id: int) -> dict:
-        now = datetime.now()
+        brazil_tz = pytz.timezone('America/Sao_Paulo')
+        now = datetime.now(brazil_tz)
         current_month = now.month
         current_year = now.year
         
@@ -36,18 +71,19 @@ class ShiftRepository:
             func.coalesce(func.sum(Shift.value), 0).label("monthly_earnings")
         ).filter(
             Shift.doctor_id == doctor_id,
-            extract('month', Shift.date) == current_month,
-            extract('year', Shift.date) == current_year,
-            Shift.status.in_(["paid", "completed"])
+            extract('month', Shift.payment_date) == current_month,
+            extract('year', Shift.payment_date) == current_year,
+            Shift.status == "paid",
+            Shift.payment_date.isnot(None)
         ).scalar()
 
         scheduled_shifts = db.query(
             func.count(Shift.id).label("scheduled_shifts")
         ).filter(
             Shift.doctor_id == doctor_id,
-            Shift.date >= now.date(),
-            Shift.date <= (now.date() + timedelta(days=30)),
-            Shift.status == "scheduled"
+            extract('month', Shift.date) == current_month,
+            extract('year', Shift.date) == current_year,
+            Shift.status.in_(["scheduled", "completed", "paid"])
         ).scalar()
 
         hours_worked = db.query(
@@ -66,22 +102,31 @@ class ShiftRepository:
         ).scalar()
 
         three_months_ago = (now - timedelta(days=90)).date()
-        avg_hourly_rate = db.query(
-            func.coalesce(
-                func.avg(
-                    Shift.value / (
-                        func.extract('hour', func.timediff(Shift.end_time, Shift.start_time)) +
-                        func.extract('minute', func.timediff(Shift.end_time, Shift.start_time)) / 60 +
-                        func.extract('second', func.timediff(Shift.end_time, Shift.start_time)) / 3600
-                    )
-                ), 0
-            ).label("avg_hourly_rate")
-        ).filter(
+        
+        shifts = db.query(Shift).filter(
             Shift.doctor_id == doctor_id,
             Shift.date >= three_months_ago,
             Shift.date <= now.date(),
             Shift.status.in_(["paid", "completed"])
-        ).scalar()
+        ).all()
+        
+        total_value = 0
+        total_hours = 0
+        
+        for shift in shifts:
+            start_seconds = shift.start_time.hour * 3600 + shift.start_time.minute * 60 + shift.start_time.second
+            end_seconds = shift.end_time.hour * 3600 + shift.end_time.minute * 60 + shift.end_time.second
+            
+            if end_seconds < start_seconds:
+                end_seconds += 24 * 3600
+                
+            hours = (end_seconds - start_seconds) / 3600
+            
+            if hours > 0:
+                total_value += float(shift.value)
+                total_hours += hours
+        
+        avg_hourly_rate = total_value / total_hours if total_hours > 0 else 0
 
         return {
             "monthly_earnings": float(monthly_earnings),
@@ -91,20 +136,22 @@ class ShiftRepository:
         }
         
     def get_financial_chart_data(self, db: Session, doctor_id: int) -> list:
-        current_year = datetime.now().year
+        brazil_tz = pytz.timezone('America/Sao_Paulo')
+        current_year = datetime.now(brazil_tz).year
         
         results = db.query(
-            extract('month', Shift.date).label('month'),
+            extract('month', Shift.payment_date).label('month'),
             func.sum(Shift.value).label('earnings'),
             func.count(Shift.id).label('shifts_count')
         ).filter(
             Shift.doctor_id == doctor_id,
-            extract('year', Shift.date) == current_year,
-            Shift.status.in_(["paid", "completed"])
+            extract('year', Shift.payment_date) == current_year,
+            Shift.status == "paid",
+            Shift.payment_date.isnot(None)
         ).group_by(
-            extract('month', Shift.date)
+            extract('month', Shift.payment_date)
         ).order_by(
-            extract('month', Shift.date)
+            extract('month', Shift.payment_date)
         ).all()
 
         monthly_data = []
@@ -216,3 +263,16 @@ class ShiftRepository:
         db.commit()
         db.refresh(shift)
         return shift
+        
+    def delete_shift(self, db: Session, shift_id: int) -> bool:
+        shift = self.get_by_id(db, shift_id)
+        if not shift:
+            return False
+        
+        if shift.payment:
+            db.delete(shift.payment)
+            
+        db.delete(shift)
+        db.commit()
+        return True
+        
