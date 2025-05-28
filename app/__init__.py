@@ -15,14 +15,14 @@ def create_app():
         app,
         resources={
             r"/api/*": {
-                "origins": ["http://localhost:8080", "http://127.0.0.1:8080"],
+                "origins": ["http://localhost:8080", "http://127.0.0.1:8080", "https://medsinc.com.br"],
                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
                 "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
                 "supports_credentials": True,
                 "expose_headers": ["Content-Disposition"],
             },
             r"/static/*": {
-                "origins": ["http://localhost:8080", "http://127.0.0.1:8080"],
+                "origins": ["http://localhost:8080", "http://127.0.0.1:8080", "https://medsinc.com.br"],
                 "methods": ["GET", "OPTIONS"],
                 "allow_headers": ["Content-Type"],
                 "supports_credentials": True,
