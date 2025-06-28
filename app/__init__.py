@@ -40,6 +40,7 @@ def create_app():
         shift_bp,
         payment_bp,
         static_bp,
+        admin_bp,      
     )
 
     app.register_blueprint(static_bp, url_prefix="/static")
@@ -48,5 +49,6 @@ def create_app():
     app.register_blueprint(hospital_bp, url_prefix="/api/hospitals/")
     app.register_blueprint(shift_bp, url_prefix="/api/shifts/")
     app.register_blueprint(payment_bp, url_prefix="/api/payments/")
+    app.register_blueprint(admin_bp, url_prefix="/api/admin")
 
     return app
