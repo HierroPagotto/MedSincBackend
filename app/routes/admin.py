@@ -6,7 +6,7 @@ from app.utils.auth import token_required, admin_required
 from app.models.shift import Shift
 from app.models.payment import Payment
 
-admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
+admin_bp = Blueprint('admin', __name__)
 doctor_repository = DoctorRepository()
 hospital_repository = HospitalRepository()
 
