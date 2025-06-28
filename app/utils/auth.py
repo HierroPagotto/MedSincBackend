@@ -25,3 +25,11 @@ def token_required(f):
 
         return f(doctor, *args, **kwargs)
     return decorated
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(current_user, *args, **kwargs):
+        if not getattr(current_user, 'is_admin', False):
+            return jsonify({'message': 'Acesso restrito a administradores'}), 403
+        return f(current_user, *args, **kwargs)
+    return decorated_function

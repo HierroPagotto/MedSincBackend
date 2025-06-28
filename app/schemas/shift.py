@@ -13,3 +13,16 @@ class ShiftCreate:
     payment_date: Optional[date]
     end_date: Optional[date] = None
     week_days: Optional[List[str]] = None
+
+@dataclass
+class ShiftUpdate:
+    hospital_id: Optional[int] = None
+    date: Optional[date] = None
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    value: Optional[float] = None
+    specialty: Optional[str] = None
+    payment_date: Optional[date] = None
+    end_date: Optional[date] = None
+    week_days: Optional[List[str]] = None
+    status: Optional[str] = None

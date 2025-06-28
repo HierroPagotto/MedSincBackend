@@ -29,6 +29,9 @@ def upgrade():
     op.add_column('doctors', sa.Column('has_ehr_experience', sa.Boolean(), nullable=True, server_default=sa.text('0')))
     op.add_column('doctors', sa.Column('provides_invoice', sa.Boolean(), nullable=True, server_default=sa.text('0')))
     op.add_column('doctors', sa.Column('languages', sa.String(255), nullable=True))
+    op.add_column('doctors', sa.Column('is_admin', sa.Boolean(), nullable=True, server_default=sa.text('0')))
+    op.add_column('doctors', sa.Column('lost_pass_code', sa.String(6), nullable=True))
+    op.add_column('doctors', sa.Column('lost_pass_code_requested_time', sa.DateTime(timezone=True), nullable=True))
 
 def downgrade():
     columns = [
@@ -36,7 +39,7 @@ def downgrade():
         'accepts_fixed_shifts', 'accepts_temporary_shifts', 'max_distance_km', 'state',
         'cities_of_work', 'acls', 'bls', 'atls', 'pals', 'other_certifications',
         'main_hospitals', 'years_of_experience', 'has_driver_license', 'has_ehr_experience',
-        'provides_invoice', 'languages'
+        'provides_invoice', 'languages', 'is_admin', 'lost_pass_code', 'lost_pass_code_requested_time'
     ]
     for column in columns:
         op.drop_column('doctors', column)

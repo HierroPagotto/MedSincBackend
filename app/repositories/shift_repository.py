@@ -23,7 +23,6 @@ class ShiftRepository:
         return db_shift
         
     def create_multiple_shifts(self, db: Session, shift_data: dict, doctor_id: int) -> list:
-        """Cria múltiplos plantões baseados em dias da semana selecionados"""
         result_shifts = []
         
         if shift_data.get('week_days') and isinstance(shift_data['week_days'], list):
@@ -275,4 +274,12 @@ class ShiftRepository:
         db.delete(shift)
         db.commit()
         return True
+        
+    def update(self, db: Session, shift: Shift, update_data) -> Shift:
+        for field, value in update_data.__dict__.items():
+            if value is not None:
+                setattr(shift, field, value)
+        db.commit()
+        db.refresh(shift)
+        return shift
         

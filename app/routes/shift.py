@@ -3,7 +3,7 @@ import pytz
 from flask import Blueprint, request, jsonify
 from app.repositories.shift_repository import ShiftRepository
 from app.repositories.payment_repository import PaymentRepository
-from app.schemas.shift import ShiftCreate
+from app.schemas.shift import ShiftCreate, ShiftUpdate
 from app.schemas.payment import PaymentCreate
 from app.database import db
 from app.utils.auth import token_required
@@ -135,3 +135,16 @@ def delete_shift(current_user, shift_id):
         return jsonify({"message": "Plantão excluído com sucesso"})
     else:
         return jsonify({"message": "Erro ao excluir plantão"}), 500
+
+@shift_bp.route('/<int:shift_id>', methods=['PUT'])
+@token_required
+def update_shift(current_user, shift_id):
+    shift = shift_repository.get_by_id(db.session, shift_id)
+    if not shift:
+        return jsonify({'message': 'Plantão não encontrado'}), 404
+    if shift.doctor_id != current_user.id:
+        return jsonify({'message': 'Não autorizado a editar este plantão'}), 403
+    data = request.get_json()
+    update_data = ShiftUpdate(**data)
+    shift_repository.update(db.session, shift, update_data)
+    return jsonify({'message': 'Plantão atualizado com sucesso', 'shift': shift.to_dict()})
