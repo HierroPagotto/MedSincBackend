@@ -24,9 +24,18 @@ def delete_user(current_user, user_id):
     doctor = doctor_repository.get_by_id(db.session, user_id)
     if not doctor:
         return jsonify({'message': 'Usuário não encontrado'}), 404
+
+    from app.models.shift import Shift
+    from app.models.payment import Payment
+    shifts = db.session.query(Shift).filter_by(doctor_id=user_id).all()
+    for shift in shifts:
+        payments = db.session.query(Payment).filter_by(shift_id=shift.id).all()
+        for payment in payments:
+            db.session.delete(payment)
+        db.session.delete(shift)
     db.session.delete(doctor)
     db.session.commit()
-    return jsonify({'message': 'Usuário deletado com sucesso'})
+    return jsonify({'message': 'Usuário, plantões e pagamentos associados deletados com sucesso'})
 
 @admin_bp.route('/hospitals', methods=['GET'])
 @token_required

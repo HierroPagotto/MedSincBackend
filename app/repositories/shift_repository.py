@@ -65,14 +65,31 @@ class ShiftRepository:
         now = datetime.now(brazil_tz)
         current_month = now.month
         current_year = now.year
-        
+        # Mês anterior
+        if current_month == 1:
+            prev_month = 12
+            prev_year = current_year - 1
+        else:
+            prev_month = current_month - 1
+            prev_year = current_year
+
         monthly_earnings = db.query(
             func.coalesce(func.sum(Shift.value), 0).label("monthly_earnings")
         ).filter(
             Shift.doctor_id == doctor_id,
             extract('month', Shift.payment_date) == current_month,
             extract('year', Shift.payment_date) == current_year,
-            Shift.status == "paid",
+            Shift.status.in_(["scheduled", "completed", "paid"]),
+            Shift.payment_date.isnot(None)
+        ).scalar()
+
+        previous_month_earnings = db.query(
+            func.coalesce(func.sum(Shift.value), 0).label("previous_month_earnings")
+        ).filter(
+            Shift.doctor_id == doctor_id,
+            extract('month', Shift.payment_date) == prev_month,
+            extract('year', Shift.payment_date) == prev_year,
+            Shift.status.in_(["scheduled", "completed", "paid"]),
             Shift.payment_date.isnot(None)
         ).scalar()
 
@@ -85,53 +102,94 @@ class ShiftRepository:
             Shift.status.in_(["scheduled", "completed", "paid"])
         ).scalar()
 
-        hours_worked = db.query(
-            func.coalesce(
-                func.sum(
-                    func.extract('hour', func.timediff(Shift.end_time, Shift.start_time)) +
-                    func.extract('minute', func.timediff(Shift.end_time, Shift.start_time)) / 60 +
-                    func.extract('second', func.timediff(Shift.end_time, Shift.start_time)) / 3600
-                ), 0
-            ).label("hours_worked")
+        previous_scheduled_shifts = db.query(
+            func.count(Shift.id).label("previous_scheduled_shifts")
         ).filter(
+            Shift.doctor_id == doctor_id,
+            extract('month', Shift.date) == prev_month,
+            extract('year', Shift.date) == prev_year,
+            Shift.status.in_(["scheduled", "completed", "paid"])
+        ).scalar()
+
+        hours_worked = 0
+        for shift in db.query(Shift).filter(
             Shift.doctor_id == doctor_id,
             extract('month', Shift.date) == current_month,
             extract('year', Shift.date) == current_year,
-            Shift.status.in_(["paid", "completed"])
-        ).scalar()
+            Shift.status.in_(["scheduled", "completed", "paid"])
+        ).all():
+            start_seconds = shift.start_time.hour * 3600 + shift.start_time.minute * 60 + shift.start_time.second
+            end_seconds = shift.end_time.hour * 3600 + shift.end_time.minute * 60 + shift.end_time.second
+            if end_seconds < start_seconds:
+                end_seconds += 24 * 3600
+            hours = (end_seconds - start_seconds) / 3600
+            if hours > 0:
+                hours_worked += hours
+
+        previous_hours_worked = 0
+        for shift in db.query(Shift).filter(
+            Shift.doctor_id == doctor_id,
+            extract('month', Shift.date) == prev_month,
+            extract('year', Shift.date) == prev_year,
+            Shift.status.in_(["scheduled", "completed", "paid"])
+        ).all():
+            start_seconds = shift.start_time.hour * 3600 + shift.start_time.minute * 60 + shift.start_time.second
+            end_seconds = shift.end_time.hour * 3600 + shift.end_time.minute * 60 + shift.end_time.second
+            if end_seconds < start_seconds:
+                end_seconds += 24 * 3600
+            hours = (end_seconds - start_seconds) / 3600
+            if hours > 0:
+                previous_hours_worked += hours
 
         three_months_ago = (now - timedelta(days=90)).date()
-        
         shifts = db.query(Shift).filter(
             Shift.doctor_id == doctor_id,
             Shift.date >= three_months_ago,
             Shift.date <= now.date(),
-            Shift.status.in_(["paid", "completed"])
+            Shift.status.in_(["scheduled", "paid", "completed"])
         ).all()
-        
         total_value = 0
         total_hours = 0
-        
         for shift in shifts:
             start_seconds = shift.start_time.hour * 3600 + shift.start_time.minute * 60 + shift.start_time.second
             end_seconds = shift.end_time.hour * 3600 + shift.end_time.minute * 60 + shift.end_time.second
-            
             if end_seconds < start_seconds:
                 end_seconds += 24 * 3600
-                
             hours = (end_seconds - start_seconds) / 3600
-            
             if hours > 0:
                 total_value += float(shift.value)
                 total_hours += hours
-        
         avg_hourly_rate = total_value / total_hours if total_hours > 0 else 0
+
+        # Média do mês anterior
+        prev_shifts = db.query(Shift).filter(
+            Shift.doctor_id == doctor_id,
+            extract('month', Shift.date) == prev_month,
+            extract('year', Shift.date) == prev_year,
+            Shift.status.in_(["scheduled", "completed", "paid"])
+        ).all()
+        prev_total_value = 0
+        prev_total_hours = 0
+        for shift in prev_shifts:
+            start_seconds = shift.start_time.hour * 3600 + shift.start_time.minute * 60 + shift.start_time.second
+            end_seconds = shift.end_time.hour * 3600 + shift.end_time.minute * 60 + shift.end_time.second
+            if end_seconds < start_seconds:
+                end_seconds += 24 * 3600
+            hours = (end_seconds - start_seconds) / 3600
+            if hours > 0:
+                prev_total_value += float(shift.value)
+                prev_total_hours += hours
+        previous_avg_hourly_rate = prev_total_value / prev_total_hours if prev_total_hours > 0 else 0
 
         return {
             "monthly_earnings": float(monthly_earnings),
+            "previous_month_earnings": float(previous_month_earnings),
             "scheduled_shifts": scheduled_shifts,
+            "previous_scheduled_shifts": previous_scheduled_shifts,
             "hours_worked": round(hours_worked, 1),
-            "avg_hourly_rate": round(avg_hourly_rate, 2)
+            "previous_hours_worked": round(previous_hours_worked, 1),
+            "avg_hourly_rate": round(avg_hourly_rate, 2),
+            "previous_avg_hourly_rate": round(previous_avg_hourly_rate, 2)
         }
         
     def get_financial_chart_data(self, db: Session, doctor_id: int) -> list:
@@ -182,7 +240,7 @@ class ShiftRepository:
         ).filter(
             Shift.doctor_id == doctor_id,
             extract('year', Shift.date) == year,
-            Shift.status.in_(["paid", "completed"])
+            Shift.status.in_(["scheduled", "paid", "completed", ])
         ).group_by(
             extract('month', Shift.date)
         ).all()
@@ -225,7 +283,7 @@ class ShiftRepository:
         ).filter(
             Shift.doctor_id == doctor_id,
             extract('year', Shift.date) == year,
-            Shift.status.in_(["paid", "completed"])
+            Shift.status.in_(["scheduled", "paid", "completed"])
         ).scalar()
 
         total_expected = db.query(
@@ -235,7 +293,7 @@ class ShiftRepository:
             extract('year', Shift.date) == year,
             or_(
                 Shift.status == "scheduled",
-                Shift.status.in_(["paid", "completed"])
+                Shift.status.in_(["scheduled", "paid", "completed"])
             )
         ).scalar()
 
@@ -246,7 +304,7 @@ class ShiftRepository:
             extract('year', Shift.date) == year,
             or_(
                 Shift.status == "scheduled",
-                Shift.status.in_(["paid", "completed"])
+                Shift.status.in_(["scheduled", "paid", "completed"])
             )
         ).scalar()
 

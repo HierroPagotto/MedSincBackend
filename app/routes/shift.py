@@ -7,6 +7,8 @@ from app.schemas.shift import ShiftCreate, ShiftUpdate
 from app.schemas.payment import PaymentCreate
 from app.database import db
 from app.utils.auth import token_required
+from app.models.financial_goal import FinancialGoal
+from sqlalchemy import extract
 
 shift_bp = Blueprint('shift', __name__)
 shift_repository = ShiftRepository()
@@ -136,6 +138,36 @@ def delete_shift(current_user, shift_id):
     else:
         return jsonify({"message": "Erro ao excluir plantão"}), 500
 
+@shift_bp.route('/bulk_delete', methods=['DELETE'])
+@token_required
+def bulk_delete_shifts(current_user):
+    data = request.get_json()
+    ids = data.get('ids', [])
+    if not isinstance(ids, list) or not ids:
+        return jsonify({'message': 'Envie uma lista de IDs para deletar.'}), 400
+    deleted = []
+    not_found = []
+    not_allowed = []
+    already_paid = []
+    for shift_id in ids:
+        shift = shift_repository.get_by_id(db.session, shift_id)
+        if not shift:
+            not_found.append(shift_id)
+            continue
+        if shift.doctor_id != current_user.id:
+            not_allowed.append(shift_id)
+            continue
+        success = shift_repository.delete_shift(db.session, shift_id)
+        if success:
+            deleted.append(shift_id)
+    return jsonify({
+        'deleted': deleted,
+        'not_found': not_found,
+        'not_allowed': not_allowed,
+        'already_paid': already_paid,
+        'message': f'{len(deleted)} plantões deletados.'
+    })
+
 @shift_bp.route('/<int:shift_id>', methods=['PUT'])
 @token_required
 def update_shift(current_user, shift_id):
@@ -148,3 +180,56 @@ def update_shift(current_user, shift_id):
     update_data = ShiftUpdate(**data)
     shift_repository.update(db.session, shift, update_data)
     return jsonify({'message': 'Plantão atualizado com sucesso', 'shift': shift.to_dict()})
+
+# --- Metas financeiras ---
+@shift_bp.route('/goal', methods=['GET'])
+@token_required
+def get_goal(current_user):
+    now = datetime.now(pytz.timezone('America/Sao_Paulo'))
+    year = int(request.args.get('year', now.year))
+    month = int(request.args.get('month', now.month))
+    # Meta personalizada
+    goal = db.session.query(FinancialGoal).filter_by(user_id=current_user.id, year=year, month=month).first()
+    if goal:
+        return jsonify({'year': year, 'month': month, 'value': goal.value, 'custom': True})
+    # Meta padrão
+    default_goal = db.session.query(FinancialGoal).filter_by(user_id=current_user.id, year=0, month=0).first()
+    if default_goal:
+        return jsonify({'year': year, 'month': month, 'value': default_goal.value, 'custom': False})
+    return jsonify({'year': year, 'month': month, 'value': 0, 'custom': False})
+
+@shift_bp.route('/goal', methods=['POST'])
+@token_required
+def set_goal(current_user):
+    data = request.get_json()
+    year = int(data.get('year', 0))
+    month = int(data.get('month', 0))
+    value = float(data.get('value', 0))
+    if value <= 0:
+        return jsonify({'message': 'Valor da meta deve ser maior que zero.'}), 400
+    goal = db.session.query(FinancialGoal).filter_by(user_id=current_user.id, year=year, month=month).first()
+    if not goal:
+        goal = FinancialGoal(user_id=current_user.id, year=year, month=month, value=value)
+        db.session.add(goal)
+    else:
+        goal.value = value
+    db.session.commit()
+    return jsonify({'message': 'Meta salva com sucesso.', 'goal': {'year': year, 'month': month, 'value': value}})
+
+@shift_bp.route('/goal', methods=['DELETE'])
+@token_required
+def remove_goal(current_user):
+    year = int(request.args.get('year', 0))
+    month = int(request.args.get('month', 0))
+    goal = db.session.query(FinancialGoal).filter_by(user_id=current_user.id, year=year, month=month).first()
+    if not goal:
+        return jsonify({'message': 'Meta não encontrada.'}), 404
+    db.session.delete(goal)
+    db.session.commit()
+    return jsonify({'message': 'Meta removida com sucesso.'})
+
+@shift_bp.route('/goals', methods=['GET'])
+@token_required
+def list_goals(current_user):
+    goals = db.session.query(FinancialGoal).filter_by(user_id=current_user.id).all()
+    return jsonify([{'year': g.year, 'month': g.month, 'value': g.value} for g in goals])
