@@ -18,6 +18,8 @@ jobs:
           username: ubuntu
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
+            set -e
+
             cd /opt/medsinc-backend
 
             git fetch origin main
