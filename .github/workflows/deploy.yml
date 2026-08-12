@@ -1,0 +1,42 @@
+name: Deploy MedSinc Backend
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to AWS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.4
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/medsinc-backend
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            source venv/bin/activate
+
+            pip install -r requirements.txt
+
+            sudo systemctl daemon-reload
+            sudo systemctl restart medsinc
+
+            sleep 3
+
+            if ! systemctl is-active --quiet medsinc; then
+              echo "ERRO: MedSinc não iniciou corretamente."
+              systemctl status medsinc --no-pager
+              journalctl -u medsinc -n 50 --no-pager
+              exit 1
+            fi
+
+            echo "Deploy concluído com sucesso!"
