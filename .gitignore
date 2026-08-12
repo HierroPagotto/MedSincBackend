@@ -30,3 +30,7 @@ yarn-error.log*
 *.sw?
 
 .pytest_cache/
+
+.env
+.env.*
+!.env.example
