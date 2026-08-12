@@ -5,3 +5,4 @@ from .shift import shift_bp
 from .payments import payment_bp
 from .static import static_bp
 from .admin import admin_bp
+from .hospital_portal import hospital_portal_bp

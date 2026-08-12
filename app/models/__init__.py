@@ -3,3 +3,15 @@ from .hospital import Hospital
 from .shift import Shift
 from .payment import Payment
 from .financial_goal import FinancialGoal
+from .user import User
+from .hospital_staff import HospitalStaff
+
+__all__ = [
+    "Doctor",
+    "Hospital",
+    "Shift",
+    "Payment",
+    "FinancialGoal",
+    "User",
+    "HospitalStaff",
+]

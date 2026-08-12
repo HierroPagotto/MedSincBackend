@@ -1,5 +1,5 @@
 from datetime import datetime as dt
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import db
@@ -9,6 +9,9 @@ class Doctor(db.Model):
     __tablename__ = "doctors"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id"), unique=True, nullable=True, index=True
+    )
 
     name = Column(String(100), nullable=False)
     photo_url = Column(String(255))
@@ -55,6 +58,7 @@ class Doctor(db.Model):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     shifts = relationship("Shift", back_populates="doctor")
+    user = relationship("User", back_populates="doctor")
 
     def to_dict(self, include_shifts=False, include_shifts_count=False):
         result = {}
@@ -74,7 +78,7 @@ class Doctor(db.Model):
 
         if include_shifts and self.shifts:
             result["shifts"] = [shift.to_dict() for shift in self.shifts]
-            
+
         if include_shifts_count:
             result["shifts_count"] = len(self.shifts) if self.shifts else 0
 
