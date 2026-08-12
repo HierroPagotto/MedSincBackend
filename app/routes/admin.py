@@ -6,51 +6,77 @@ from app.utils.auth import token_required, admin_required
 from app.models.shift import Shift
 from app.models.payment import Payment
 
-admin_bp = Blueprint('admin', __name__)
+admin_bp = Blueprint("admin", __name__)
 doctor_repository = DoctorRepository()
 hospital_repository = HospitalRepository()
 
-@admin_bp.route('/users', methods=['GET'])
+
+@admin_bp.route("/users", methods=["GET"])
 @token_required
 @admin_required
 def list_users(current_user):
     doctors, count = doctor_repository.get_all(db.session)
-    return jsonify({'count': count, 'users': [d.to_dict() for d in doctors]})
+    return jsonify({"count": count, "users": [d.to_dict() for d in doctors]})
 
-@admin_bp.route('/users/<int:user_id>', methods=['DELETE'])
+
+@admin_bp.route("/users/<int:user_id>", methods=["DELETE"])
 @token_required
 @admin_required
 def delete_user(current_user, user_id):
     doctor = doctor_repository.get_by_id(db.session, user_id)
     if not doctor:
-        return jsonify({'message': 'Usuário não encontrado'}), 404
+        return jsonify({"message": "Usuário não encontrado"}), 404
 
-    from app.models.shift import Shift
-    from app.models.payment import Payment
+    from app.models.user import User
+
     shifts = db.session.query(Shift).filter_by(doctor_id=user_id).all()
     for shift in shifts:
         payments = db.session.query(Payment).filter_by(shift_id=shift.id).all()
         for payment in payments:
             db.session.delete(payment)
         db.session.delete(shift)
-    db.session.delete(doctor)
-    db.session.commit()
-    return jsonify({'message': 'Usuário, plantões e pagamentos associados deletados com sucesso'})
 
-@admin_bp.route('/hospitals', methods=['GET'])
+    linked_user_id = doctor.user_id
+    db.session.delete(doctor)
+    if linked_user_id:
+        user = db.session.query(User).filter(User.id == linked_user_id).first()
+        if user:
+            db.session.delete(user)
+    db.session.commit()
+    return jsonify(
+        {"message": "Usuário, plantões e pagamentos associados deletados com sucesso"}
+    )
+
+
+@admin_bp.route("/hospitals", methods=["GET"])
 @token_required
 @admin_required
 def list_hospitals(current_user):
     hospitals = hospital_repository.get_all(db.session)
-    return jsonify({'count': len(hospitals), 'hospitals': [h.to_dict() for h in hospitals]})
+    return jsonify(
+        {"count": len(hospitals), "hospitals": [h.to_dict() for h in hospitals]}
+    )
 
-@admin_bp.route('/hospitals/<int:hospital_id>', methods=['DELETE'])
+
+@admin_bp.route("/hospitals/<int:hospital_id>", methods=["DELETE"])
 @token_required
 @admin_required
 def delete_hospital(current_user, hospital_id):
     hospital = hospital_repository.get_by_id(db.session, hospital_id)
     if not hospital:
-        return jsonify({'message': 'Hospital não encontrado'}), 404
+        return jsonify({"message": "Hospital não encontrado"}), 404
+
+    from app.models.hospital_staff import HospitalStaff
+    from app.models.user import User
+
+    staff_members = (
+        db.session.query(HospitalStaff).filter_by(hospital_id=hospital_id).all()
+    )
+    for member in staff_members:
+        user = db.session.query(User).filter(User.id == member.user_id).first()
+        db.session.delete(member)
+        if user:
+            db.session.delete(user)
 
     shifts = db.session.query(Shift).filter_by(hospital_id=hospital_id).all()
     for shift in shifts:
@@ -60,4 +86,6 @@ def delete_hospital(current_user, hospital_id):
         db.session.delete(shift)
     db.session.delete(hospital)
     db.session.commit()
-    return jsonify({'message': 'Hospital, plantões e pagamentos associados deletados com sucesso'}) 
+    return jsonify(
+        {"message": "Hospital, plantões e pagamentos associados deletados com sucesso"}
+    )
