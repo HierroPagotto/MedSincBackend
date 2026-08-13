@@ -1,11 +1,46 @@
-"""Bootstrap schema: auth (Phase 0) + marketplace (Phase 1)."""
+"""Bootstrap schema: auth (Phase 0) + marketplace (Phase 1).
+
+Idempotente sob race de múltiplos workers Gunicorn (create_all / ALTER).
+"""
 
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.database import db
 from app.models.user import User
 from app.models.doctor import Doctor
 from app.utils.security import ROLE_DOCTOR, ROLE_PLATFORM_ADMIN
+
+_IGNORABLE_MYSQL_CODES = {1050, 1060, 1061, 1826}
+
+
+def _mysql_error_code(exc: BaseException) -> int | None:
+    orig = getattr(exc, "orig", None)
+    if orig is None:
+        return None
+    args = getattr(orig, "args", None)
+    if not args:
+        return None
+    try:
+        return int(args[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_ignorable_schema_error(exc: BaseException) -> bool:
+    code = _mysql_error_code(exc)
+    if code in _IGNORABLE_MYSQL_CODES:
+        return True
+    message = str(exc).lower()
+    return any(
+        needle in message
+        for needle in (
+            "already exists",
+            "duplicate column",
+            "duplicate key",
+            "duplicate foreign key",
+        )
+    )
 
 
 def _column_names(table: str) -> set[str]:
@@ -16,9 +51,58 @@ def _column_names(table: str) -> set[str]:
 
 
 def _add_column_if_missing(table: str, column: str, ddl: str) -> None:
-    if column not in _column_names(table):
+    if column in _column_names(table):
+        return
+    try:
         db.session.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
         db.session.commit()
+    except (OperationalError, ProgrammingError) as exc:
+        db.session.rollback()
+        if not _is_ignorable_schema_error(exc):
+            raise
+
+
+def _create_all_safe() -> None:
+    try:
+        db.create_all()
+    except (OperationalError, ProgrammingError) as exc:
+        db.session.rollback()
+        if not _is_ignorable_schema_error(exc):
+            raise
+        try:
+            db.create_all()
+        except (OperationalError, ProgrammingError) as retry_exc:
+            db.session.rollback()
+            if not _is_ignorable_schema_error(retry_exc):
+                raise
+
+
+def _run_ddl_ignore_exists(sql: str) -> None:
+    try:
+        db.session.execute(text(sql))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _acquire_bootstrap_lock() -> bool:
+    """Evita dois workers migrando ao mesmo tempo (MySQL GET_LOCK)."""
+    try:
+        result = db.session.execute(
+            text("SELECT GET_LOCK('medsinc_schema_bootstrap', 30)")
+        ).scalar()
+        return result == 1
+    except Exception:
+        db.session.rollback()
+        return True
+
+
+def _release_bootstrap_lock() -> None:
+    try:
+        db.session.execute(text("SELECT RELEASE_LOCK('medsinc_schema_bootstrap')"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def ensure_auth_schema() -> None:
@@ -35,59 +119,43 @@ def ensure_auth_schema() -> None:
         OpportunityApplication,
     )
 
-    db.create_all()
-
-    _add_column_if_missing("doctors", "user_id", "user_id INT NULL")
-
-    _add_column_if_missing("hospitals", "city", "city VARCHAR(100) NULL")
-    _add_column_if_missing("hospitals", "state", "state VARCHAR(2) NULL")
-    _add_column_if_missing("hospitals", "cnpj", "cnpj VARCHAR(20) NULL")
-    _add_column_if_missing("hospitals", "is_verified", "is_verified BOOLEAN DEFAULT 0")
-
-    _add_column_if_missing(
-        "shifts", "source", "source VARCHAR(20) NOT NULL DEFAULT 'manual'"
-    )
-    _add_column_if_missing("shifts", "opportunity_id", "opportunity_id INT NULL")
-
+    locked = _acquire_bootstrap_lock()
     try:
-        db.session.execute(
-            text("CREATE UNIQUE INDEX ix_doctors_user_id ON doctors (user_id)")
-        )
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+        _create_all_safe()
 
-    try:
-        db.session.execute(
-            text(
-                "ALTER TABLE doctors ADD CONSTRAINT fk_doctors_user_id "
-                "FOREIGN KEY (user_id) REFERENCES users(id)"
-            )
-        )
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+        _add_column_if_missing("doctors", "user_id", "user_id INT NULL")
 
-    try:
-        db.session.execute(
-            text("CREATE INDEX ix_shifts_opportunity_id ON shifts (opportunity_id)")
+        _add_column_if_missing("hospitals", "city", "city VARCHAR(100) NULL")
+        _add_column_if_missing("hospitals", "state", "state VARCHAR(2) NULL")
+        _add_column_if_missing("hospitals", "cnpj", "cnpj VARCHAR(20) NULL")
+        _add_column_if_missing(
+            "hospitals", "is_verified", "is_verified BOOLEAN DEFAULT 0"
         )
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
 
-    try:
-        db.session.execute(
-            text(
-                "ALTER TABLE shifts ADD CONSTRAINT fk_shifts_opportunity_id "
-                "FOREIGN KEY (opportunity_id) REFERENCES shift_opportunities(id)"
-            )
+        _add_column_if_missing(
+            "shifts", "source", "source VARCHAR(20) NOT NULL DEFAULT 'manual'"
         )
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+        _add_column_if_missing("shifts", "opportunity_id", "opportunity_id INT NULL")
 
-    backfill_doctor_users()
+        _run_ddl_ignore_exists(
+            "CREATE UNIQUE INDEX ix_doctors_user_id ON doctors (user_id)"
+        )
+        _run_ddl_ignore_exists(
+            "ALTER TABLE doctors ADD CONSTRAINT fk_doctors_user_id "
+            "FOREIGN KEY (user_id) REFERENCES users(id)"
+        )
+        _run_ddl_ignore_exists(
+            "CREATE INDEX ix_shifts_opportunity_id ON shifts (opportunity_id)"
+        )
+        _run_ddl_ignore_exists(
+            "ALTER TABLE shifts ADD CONSTRAINT fk_shifts_opportunity_id "
+            "FOREIGN KEY (opportunity_id) REFERENCES shift_opportunities(id)"
+        )
+
+        backfill_doctor_users()
+    finally:
+        if locked:
+            _release_bootstrap_lock()
 
 
 def backfill_doctor_users() -> None:
@@ -111,4 +179,8 @@ def backfill_doctor_users() -> None:
         doctor.user_id = user.id
 
     if doctors:
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return
