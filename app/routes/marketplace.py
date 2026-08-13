@@ -72,22 +72,35 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
 def list_open_opportunities(current_doctor):
     city = request.args.get("city")
     specialty = request.args.get("specialty")
+    verified_only = request.args.get("verified_only", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
     try:
         date_from = parse_date(request.args.get("date_from"))
         date_to = parse_date(request.args.get("date_to"))
+        page = int(request.args.get("page") or 1)
+        per_page = int(request.args.get("per_page") or 20)
     except ValueError as exc:
         return jsonify({"message": str(exc)}), 400
 
-    items = opportunity_repo.list_open(
+    items, total = opportunity_repo.list_open(
         db.session,
         city=city,
         specialty=specialty,
         date_from=date_from,
         date_to=date_to,
+        verified_only=verified_only,
+        page=page,
+        per_page=per_page,
     )
     return jsonify(
         {
             "count": len(items),
+            "total": total,
+            "page": page,
+            "per_page": per_page,
             "opportunities": [o.to_dict(include_hospital=True) for o in items],
         }
     )
@@ -210,6 +223,9 @@ def cancel_opportunity(staff, opportunity_id):
 @marketplace_bp.route("/opportunities/<int:opportunity_id>/apply", methods=["POST"])
 @token_required
 def apply_to_opportunity(current_doctor, opportunity_id):
+    from app.utils.schedule import doctor_has_conflicting_shift
+    from app.utils.marketplace_notifications import notify_hospital_new_application
+
     opportunity = opportunity_repo.get_by_id(db.session, opportunity_id)
     if not opportunity:
         return jsonify({"message": "Oportunidade não encontrada"}), 404
@@ -217,6 +233,24 @@ def apply_to_opportunity(current_doctor, opportunity_id):
         return (
             jsonify({"message": "Oportunidade não está aberta para candidaturas"}),
             400,
+        )
+
+    conflict = doctor_has_conflicting_shift(
+        db.session,
+        doctor_id=current_doctor.id,
+        opportunity_date=opportunity.date,
+        start_time=opportunity.start_time,
+        end_time=opportunity.end_time,
+    )
+    if conflict:
+        return (
+            jsonify(
+                {
+                    "message": "Você já possui plantão conflitante neste horário",
+                    "conflicting_shift_id": conflict.id,
+                }
+            ),
+            409,
         )
 
     existing = application_repo.get_by_opportunity_and_doctor(
@@ -251,6 +285,8 @@ def apply_to_opportunity(current_doctor, opportunity_id):
             doctor_id=current_doctor.id,
             message=message,
         )
+
+    notify_hospital_new_application(opportunity=opportunity, doctor=current_doctor)
 
     return (
         jsonify(

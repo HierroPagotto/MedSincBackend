@@ -34,16 +34,20 @@ def doctor_has_conflicting_shift(
     start_time: time,
     end_time: time,
 ) -> Shift | None:
-    """Conflito simples: mesmo dia (ou dia seguinte se overnight) com overlap de horário."""
+    """
+    Conflito com plantões scheduled/completed/paid.
+    Considera overnight e plantões do dia anterior que atravessem a meia-noite.
+    """
     opp_intervals = shift_intervals(opportunity_date, start_time, end_time)
 
+    day_before = opportunity_date - timedelta(days=1)
     day_after = opportunity_date + timedelta(days=1)
     candidates = (
         db.query(Shift)
         .filter(
             Shift.doctor_id == doctor_id,
             Shift.status.in_(["scheduled", "completed", "paid"]),
-            Shift.date.in_([opportunity_date, day_after]),
+            Shift.date.in_([day_before, opportunity_date, day_after]),
         )
         .all()
     )

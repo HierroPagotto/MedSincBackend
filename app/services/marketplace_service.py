@@ -1,10 +1,11 @@
 from datetime import date, datetime, time
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.shift import Shift, SOURCE_MARKETPLACE
 from app.models.shift_opportunity import STATUS_OPEN, STATUS_FILLED
 from app.models.opportunity_application import (
+    OpportunityApplication,
     STATUS_APPROVED,
     STATUS_PENDING,
     STATUS_REJECTED,
@@ -13,6 +14,7 @@ from app.models.hospital_staff import HospitalStaff
 from app.repositories.application_repository import ApplicationRepository
 from app.repositories.opportunity_repository import OpportunityRepository
 from app.utils.schedule import doctor_has_conflicting_shift
+from app.utils.marketplace_notifications import notify_doctor_application_result
 
 
 class MarketplaceService:
@@ -92,10 +94,20 @@ class MarketplaceService:
         session.add(shift)
 
         opportunity.slots_filled = int(opportunity.slots_filled or 0) + 1
-        rejected_count = 0
+        rejected_apps: list[OpportunityApplication] = []
         if opportunity.slots_filled >= opportunity.slots_total:
             opportunity.status = STATUS_FILLED
-            rejected_count = self.applications.reject_pending_for_opportunity(
+            rejected_apps = (
+                session.query(OpportunityApplication)
+                .options(joinedload(OpportunityApplication.doctor))
+                .filter(
+                    OpportunityApplication.opportunity_id == opportunity.id,
+                    OpportunityApplication.status == STATUS_PENDING,
+                    OpportunityApplication.id != application.id,
+                )
+                .all()
+            )
+            self.applications.reject_pending_for_opportunity(
                 session,
                 opportunity.id,
                 except_application_id=application.id,
@@ -108,12 +120,27 @@ class MarketplaceService:
         session.refresh(application)
         session.refresh(opportunity)
 
+        if application.doctor:
+            notify_doctor_application_result(
+                doctor=application.doctor,
+                opportunity=opportunity,
+                approved=True,
+            )
+        for rejected in rejected_apps:
+            session.refresh(rejected)
+            if rejected.doctor:
+                notify_doctor_application_result(
+                    doctor=rejected.doctor,
+                    opportunity=opportunity,
+                    approved=False,
+                )
+
         return {
             "message": "Candidatura aprovada",
             "application": application.to_dict(include_doctor=True),
             "shift": shift.to_dict(),
             "opportunity": opportunity.to_dict(include_hospital=True),
-            "rejected_pending_count": rejected_count,
+            "rejected_pending_count": len(rejected_apps),
         }, None
 
     def reject_application(
@@ -146,6 +173,13 @@ class MarketplaceService:
             staff_id=staff.id,
             commit=True,
         )
+
+        if application.doctor and opportunity:
+            notify_doctor_application_result(
+                doctor=application.doctor,
+                opportunity=opportunity,
+                approved=False,
+            )
 
         return {
             "message": "Candidatura rejeitada",

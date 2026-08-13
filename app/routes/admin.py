@@ -89,3 +89,80 @@ def delete_hospital(current_user, hospital_id):
     return jsonify(
         {"message": "Hospital, plantões e pagamentos associados deletados com sucesso"}
     )
+
+
+@admin_bp.route("/hospitals/<int:hospital_id>/verify", methods=["POST"])
+@token_required
+@admin_required
+def verify_hospital(current_user, hospital_id):
+    hospital = hospital_repository.get_by_id(db.session, hospital_id)
+    if not hospital:
+        return jsonify({"message": "Hospital não encontrado"}), 404
+    hospital.is_verified = True
+    db.session.commit()
+    return jsonify({"message": "Hospital verificado", "hospital": hospital.to_dict()})
+
+
+@admin_bp.route("/hospitals/<int:hospital_id>/unverify", methods=["POST"])
+@token_required
+@admin_required
+def unverify_hospital(current_user, hospital_id):
+    hospital = hospital_repository.get_by_id(db.session, hospital_id)
+    if not hospital:
+        return jsonify({"message": "Hospital não encontrado"}), 404
+    hospital.is_verified = False
+    db.session.commit()
+    return jsonify({"message": "Verificação removida", "hospital": hospital.to_dict()})
+
+
+@admin_bp.route("/opportunities", methods=["GET"])
+@token_required
+@admin_required
+def list_opportunities(current_user):
+    from app.repositories.opportunity_repository import OpportunityRepository
+
+    status = request.args.get("status")
+    try:
+        page = int(request.args.get("page") or 1)
+        per_page = int(request.args.get("per_page") or 50)
+    except ValueError:
+        return jsonify({"message": "page/per_page inválidos"}), 400
+
+    repo = OpportunityRepository()
+    items, total = repo.list_all_admin(
+        db.session, status=status, page=page, per_page=per_page
+    )
+    return jsonify(
+        {
+            "count": len(items),
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "opportunities": [
+                o.to_dict(include_hospital=True, include_applications_count=True)
+                for o in items
+            ],
+        }
+    )
+
+
+@admin_bp.route("/opportunities/<int:opportunity_id>/cancel", methods=["POST"])
+@token_required
+@admin_required
+def cancel_opportunity(current_user, opportunity_id):
+    from app.repositories.opportunity_repository import OpportunityRepository
+    from app.models.shift_opportunity import STATUS_CANCELLED
+
+    repo = OpportunityRepository()
+    opportunity = repo.get_by_id(db.session, opportunity_id)
+    if not opportunity:
+        return jsonify({"message": "Oportunidade não encontrada"}), 404
+    if opportunity.status == STATUS_CANCELLED:
+        return jsonify({"message": "Oportunidade já cancelada"}), 400
+    cancelled = repo.cancel(db.session, opportunity)
+    return jsonify(
+        {
+            "message": "Oportunidade cancelada pelo admin",
+            "opportunity": cancelled.to_dict(include_hospital=True),
+        }
+    )

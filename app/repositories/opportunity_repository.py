@@ -63,13 +63,20 @@ class OpportunityRepository:
         specialty: str | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
-    ) -> list[ShiftOpportunity]:
+        verified_only: bool = False,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> tuple[list[ShiftOpportunity], int]:
+        from app.models.hospital import Hospital
+
         query = (
             db.query(ShiftOpportunity)
             .options(joinedload(ShiftOpportunity.hospital))
             .filter(ShiftOpportunity.status == STATUS_OPEN)
             .filter(ShiftOpportunity.slots_filled < ShiftOpportunity.slots_total)
         )
+        if verified_only:
+            query = query.join(Hospital).filter(Hospital.is_verified.is_(True))
         if city:
             query = query.filter(ShiftOpportunity.city.ilike(f"%{city}%"))
         if specialty:
@@ -78,9 +85,44 @@ class OpportunityRepository:
             query = query.filter(ShiftOpportunity.date >= date_from)
         if date_to:
             query = query.filter(ShiftOpportunity.date <= date_to)
-        return query.order_by(
-            ShiftOpportunity.date.asc(), ShiftOpportunity.start_time.asc()
-        ).all()
+
+        total = query.count()
+        page = max(1, int(page or 1))
+        per_page = min(100, max(1, int(per_page or 20)))
+        items = (
+            query.order_by(
+                ShiftOpportunity.date.asc(), ShiftOpportunity.start_time.asc()
+            )
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+        return items, total
+
+    def list_all_admin(
+        self,
+        db: Session,
+        *,
+        status: str | None = None,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[ShiftOpportunity], int]:
+        query = db.query(ShiftOpportunity).options(
+            joinedload(ShiftOpportunity.hospital),
+            joinedload(ShiftOpportunity.applications),
+        )
+        if status:
+            query = query.filter(ShiftOpportunity.status == status)
+        total = query.count()
+        page = max(1, int(page or 1))
+        per_page = min(100, max(1, int(per_page or 50)))
+        items = (
+            query.order_by(ShiftOpportunity.date.desc(), ShiftOpportunity.id.desc())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .all()
+        )
+        return items, total
 
     def list_by_hospital(
         self, db: Session, hospital_id: int, status: str | None = None
