@@ -5,6 +5,8 @@ from .payment import Payment
 from .financial_goal import FinancialGoal
 from .user import User
 from .hospital_staff import HospitalStaff
+from .shift_opportunity import ShiftOpportunity
+from .opportunity_application import OpportunityApplication
 
 __all__ = [
     "Doctor",
@@ -14,4 +16,6 @@ __all__ = [
     "FinancialGoal",
     "User",
     "HospitalStaff",
+    "ShiftOpportunity",
+    "OpportunityApplication",
 ]

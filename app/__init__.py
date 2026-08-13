@@ -51,11 +51,13 @@ def create_app():
         static_bp,
         admin_bp,
         hospital_portal_bp,
+        marketplace_bp,
     )
 
     app.register_blueprint(static_bp, url_prefix="/static")
     app.register_blueprint(auth_bp, url_prefix="/api")
     app.register_blueprint(hospital_portal_bp, url_prefix="/api")
+    app.register_blueprint(marketplace_bp, url_prefix="/api/marketplace")
     app.register_blueprint(doctor_bp, url_prefix="/api/doctors/")
     app.register_blueprint(hospital_bp, url_prefix="/api/hospitals/")
     app.register_blueprint(shift_bp, url_prefix="/api/shifts/")

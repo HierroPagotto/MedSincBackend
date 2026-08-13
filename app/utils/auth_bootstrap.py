@@ -1,4 +1,4 @@
-"""Bootstrap Phase 0 auth schema + backfill doctors → users."""
+"""Bootstrap schema: auth (Phase 0) + marketplace (Phase 1)."""
 
 from sqlalchemy import inspect, text
 
@@ -31,6 +31,8 @@ def ensure_auth_schema() -> None:
         Shift,
         Payment,
         FinancialGoal,
+        ShiftOpportunity,
+        OpportunityApplication,
     )
 
     db.create_all()
@@ -41,6 +43,11 @@ def ensure_auth_schema() -> None:
     _add_column_if_missing("hospitals", "state", "state VARCHAR(2) NULL")
     _add_column_if_missing("hospitals", "cnpj", "cnpj VARCHAR(20) NULL")
     _add_column_if_missing("hospitals", "is_verified", "is_verified BOOLEAN DEFAULT 0")
+
+    _add_column_if_missing(
+        "shifts", "source", "source VARCHAR(20) NOT NULL DEFAULT 'manual'"
+    )
+    _add_column_if_missing("shifts", "opportunity_id", "opportunity_id INT NULL")
 
     try:
         db.session.execute(
@@ -55,6 +62,25 @@ def ensure_auth_schema() -> None:
             text(
                 "ALTER TABLE doctors ADD CONSTRAINT fk_doctors_user_id "
                 "FOREIGN KEY (user_id) REFERENCES users(id)"
+            )
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    try:
+        db.session.execute(
+            text("CREATE INDEX ix_shifts_opportunity_id ON shifts (opportunity_id)")
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    try:
+        db.session.execute(
+            text(
+                "ALTER TABLE shifts ADD CONSTRAINT fk_shifts_opportunity_id "
+                "FOREIGN KEY (opportunity_id) REFERENCES shift_opportunities(id)"
             )
         )
         db.session.commit()

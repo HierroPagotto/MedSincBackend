@@ -1,9 +1,23 @@
-from sqlalchemy import Column, Integer, String, DateTime, Date, Time, ForeignKey, Numeric, JSON
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Date,
+    Time,
+    ForeignKey,
+    Numeric,
+    JSON,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import db
 import datetime
 import decimal
+
+SOURCE_MANUAL = "manual"
+SOURCE_MARKETPLACE = "marketplace"
+
 
 class Shift(db.Model):
     __tablename__ = "shifts"
@@ -20,12 +34,17 @@ class Shift(db.Model):
     specialty = Column(String(100), nullable=False)
     payment_date = Column(Date, nullable=True)
     status = Column(String(20), nullable=False)
+    source = Column(String(20), nullable=False, default=SOURCE_MANUAL)
+    opportunity_id = Column(
+        Integer, ForeignKey("shift_opportunities.id"), nullable=True, index=True
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     doctor = relationship("Doctor", back_populates="shifts")
     hospital = relationship("Hospital", back_populates="shifts")
     payment = relationship("Payment", back_populates="shift", uselist=False)
+    opportunity = relationship("ShiftOpportunity", back_populates="shifts")
 
     def to_dict(self):
         result = {}
@@ -42,5 +61,3 @@ class Shift(db.Model):
             result["hospital"] = self.hospital.to_dict()
 
         return result
-
-
