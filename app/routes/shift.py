@@ -8,147 +8,171 @@ from app.schemas.payment import PaymentCreate
 from app.database import db
 from app.utils.auth import token_required
 from app.models.financial_goal import FinancialGoal
+from app.models.shift import SOURCE_MARKETPLACE
 from sqlalchemy import extract
 
-shift_bp = Blueprint('shift', __name__)
+shift_bp = Blueprint("shift", __name__)
 shift_repository = ShiftRepository()
 payment_repository = PaymentRepository()
 
-@shift_bp.route('/', methods=['POST'])
+MARKETPLACE_LOCKED_MSG = (
+    "Plantões do marketplace não podem ser editados ou excluídos pelo médico. "
+    "Altere pela vaga no hospital, se necessário."
+)
+
+
+def _is_marketplace_shift(shift) -> bool:
+    return getattr(shift, "source", None) == SOURCE_MARKETPLACE or bool(
+        getattr(shift, "opportunity_id", None)
+    )
+
+
+@shift_bp.route("/", methods=["POST"])
 @token_required
 def create_shift(current_user):
     data = request.get_json()
-    
-    if 'week_days' in data and data['week_days']:
-        shifts = shift_repository.create_multiple_shifts(db.session, data, current_user.id)
-        
+
+    if "week_days" in data and data["week_days"]:
+        shifts = shift_repository.create_multiple_shifts(
+            db.session, data, current_user.id
+        )
+
         for shift in shifts:
-            payment_data = PaymentCreate(
-                shift_id=shift.id,
-                amount=shift.value
-            )
+            payment_data = PaymentCreate(shift_id=shift.id, amount=shift.value)
             payment_repository.create(db.session, payment_data)
-            
-        return {'message': f'{len(shifts)} plantões criados com sucesso!'}
+
+        return {"message": f"{len(shifts)} plantões criados com sucesso!"}
     else:
         shift_data = ShiftCreate(**data)
         shift = shift_repository.create(db.session, shift_data, current_user.id)
-        
-        payment_data = PaymentCreate(
-            shift_id=shift.id,
-            amount=shift.value
-        )
-        payment_repository.create(db.session, payment_data)
-        
-        return {'message': 'Plantão criado com sucesso!'}
 
-@shift_bp.route('/', methods=['GET'])
+        payment_data = PaymentCreate(shift_id=shift.id, amount=shift.value)
+        payment_repository.create(db.session, payment_data)
+
+        return {"message": "Plantão criado com sucesso!"}
+
+
+@shift_bp.route("/", methods=["GET"])
 @token_required
 def get_shifts(current_user):
     shifts = shift_repository.get_by_doctor(db.session, current_user.id)
     shifts_dict = [shift.to_dict() for shift in shifts]
     return jsonify(shifts_dict)
 
-@shift_bp.route('/<int:shift_id>/complete', methods=['POST'])
+
+@shift_bp.route("/<int:shift_id>/complete", methods=["POST"])
 @token_required
 def complete_shift(current_user, shift_id):
     shift = shift_repository.get_by_id(db.session, shift_id)
     if not shift or shift.doctor_id != current_user.id:
-        return jsonify({'message': 'Plantão não encontrado'}), 404
+        return jsonify({"message": "Plantão não encontrado"}), 404
 
     shift = shift_repository.update_status(db.session, shift, "completed")
-    
-    return {'message': 'Atualizado com sucesso!'}
 
-@shift_bp.route('/<int:shift_id>/cancelled', methods=['POST'])
+    return {"message": "Atualizado com sucesso!"}
+
+
+@shift_bp.route("/<int:shift_id>/cancelled", methods=["POST"])
 @token_required
 def cancelled_shift(current_user, shift_id):
     shift = shift_repository.get_by_id(db.session, shift_id)
     if not shift or shift.doctor_id != current_user.id:
-        return jsonify({'message': 'Plantão não encontrado'}), 404
+        return jsonify({"message": "Plantão não encontrado"}), 404
 
     shift = shift_repository.update_status(db.session, shift, "cancelled")
-    
-    return {'message': 'Atualizado com sucesso!'}
 
-@shift_bp.route('/<int:shift_id>/paid', methods=['POST'])
+    return {"message": "Atualizado com sucesso!"}
+
+
+@shift_bp.route("/<int:shift_id>/paid", methods=["POST"])
 @token_required
 def paid_shift(current_user, shift_id):
     shift = shift_repository.get_by_id(db.session, shift_id)
     if not shift or shift.doctor_id != current_user.id:
-        return jsonify({'message': 'Plantão não encontrado'}), 404
-    
+        return jsonify({"message": "Plantão não encontrado"}), 404
+
     shift_repository.update_status(db.session, shift, "paid")
-    
+
     payment = payment_repository.get_by_shift(db.session, shift_id)
     payment_repository.update_status(db.session, payment, "paid")
-    
-    return {'message': 'Atualizado com sucesso!'}
 
-@shift_bp.route('/dashboard', methods=['GET'])
+    return {"message": "Atualizado com sucesso!"}
+
+
+@shift_bp.route("/dashboard", methods=["GET"])
 @token_required
 def get_dashboard(current_user):
     shifts = shift_repository.get_dashboard_stats(db.session, current_user.id)
     return jsonify(shifts)
 
-@shift_bp.route('/financial', methods=['GET'])
+
+@shift_bp.route("/financial", methods=["GET"])
 @token_required
 def get_financial(current_user):
     shifts = shift_repository.get_financial_chart_data(db.session, current_user.id)
     return jsonify(shifts)
 
-@shift_bp.route('/financial/full', methods=['GET'])
+
+@shift_bp.route("/financial/full", methods=["GET"])
 @token_required
 def get_financial_full(current_user):
-    year = request.args.get('year', type=int)
-    
-    if year is None:
-        brazil_tz = pytz.timezone('America/Sao_Paulo')
-        year = datetime.now(brazil_tz).year
-        
-    data = shift_repository.get_financial_data(db.session, current_user.id, year)
-        
-    return jsonify({
-        "status": "success",
-        "data": {
-            "monthly_data": data["monthly_data"],
-            "annual_totals": data["annual_totals"],
-            "year": year
-        }
-    })
+    year = request.args.get("year", type=int)
 
-@shift_bp.route('/<int:shift_id>', methods=['DELETE'])
+    if year is None:
+        brazil_tz = pytz.timezone("America/Sao_Paulo")
+        year = datetime.now(brazil_tz).year
+
+    data = shift_repository.get_financial_data(db.session, current_user.id, year)
+
+    return jsonify(
+        {
+            "status": "success",
+            "data": {
+                "monthly_data": data["monthly_data"],
+                "annual_totals": data["annual_totals"],
+                "year": year,
+            },
+        }
+    )
+
+
+@shift_bp.route("/<int:shift_id>", methods=["DELETE"])
 @token_required
 def delete_shift(current_user, shift_id):
     shift = shift_repository.get_by_id(db.session, shift_id)
-    
+
     if not shift:
         return jsonify({"message": "Plantão não encontrado"}), 404
-        
+
     if shift.doctor_id != current_user.id:
         return jsonify({"message": "Não autorizado a excluir este plantão"}), 403
-    
+
+    if _is_marketplace_shift(shift):
+        return jsonify({"message": MARKETPLACE_LOCKED_MSG}), 403
+
     if shift.status == "paid":
         return jsonify({"message": "Não é possível excluir um plantão já pago"}), 400
-    
+
     success = shift_repository.delete_shift(db.session, shift_id)
-    
+
     if success:
         return jsonify({"message": "Plantão excluído com sucesso"})
     else:
         return jsonify({"message": "Erro ao excluir plantão"}), 500
 
-@shift_bp.route('/bulk_delete', methods=['DELETE'])
+
+@shift_bp.route("/bulk_delete", methods=["DELETE"])
 @token_required
 def bulk_delete_shifts(current_user):
     data = request.get_json()
-    ids = data.get('ids', [])
+    ids = data.get("ids", [])
     if not isinstance(ids, list) or not ids:
-        return jsonify({'message': 'Envie uma lista de IDs para deletar.'}), 400
+        return jsonify({"message": "Envie uma lista de IDs para deletar."}), 400
     deleted = []
     not_found = []
     not_allowed = []
     already_paid = []
+    marketplace_locked = []
     for shift_id in ids:
         shift = shift_repository.get_by_id(db.session, shift_id)
         if not shift:
@@ -157,79 +181,126 @@ def bulk_delete_shifts(current_user):
         if shift.doctor_id != current_user.id:
             not_allowed.append(shift_id)
             continue
+        if _is_marketplace_shift(shift):
+            marketplace_locked.append(shift_id)
+            continue
+        if shift.status == "paid":
+            already_paid.append(shift_id)
+            continue
         success = shift_repository.delete_shift(db.session, shift_id)
         if success:
             deleted.append(shift_id)
-    return jsonify({
-        'deleted': deleted,
-        'not_found': not_found,
-        'not_allowed': not_allowed,
-        'already_paid': already_paid,
-        'message': f'{len(deleted)} plantões deletados.'
-    })
+    return jsonify(
+        {
+            "deleted": deleted,
+            "not_found": not_found,
+            "not_allowed": not_allowed,
+            "already_paid": already_paid,
+            "marketplace_locked": marketplace_locked,
+            "message": f"{len(deleted)} plantões deletados.",
+        }
+    )
 
-@shift_bp.route('/<int:shift_id>', methods=['PUT'])
+
+@shift_bp.route("/<int:shift_id>", methods=["PUT"])
 @token_required
 def update_shift(current_user, shift_id):
     shift = shift_repository.get_by_id(db.session, shift_id)
     if not shift:
-        return jsonify({'message': 'Plantão não encontrado'}), 404
+        return jsonify({"message": "Plantão não encontrado"}), 404
     if shift.doctor_id != current_user.id:
-        return jsonify({'message': 'Não autorizado a editar este plantão'}), 403
+        return jsonify({"message": "Não autorizado a editar este plantão"}), 403
+    if _is_marketplace_shift(shift):
+        return jsonify({"message": MARKETPLACE_LOCKED_MSG}), 403
     data = request.get_json()
     update_data = ShiftUpdate(**data)
     shift_repository.update(db.session, shift, update_data)
-    return jsonify({'message': 'Plantão atualizado com sucesso', 'shift': shift.to_dict()})
+    return jsonify(
+        {"message": "Plantão atualizado com sucesso", "shift": shift.to_dict()}
+    )
+
 
 # --- Metas financeiras ---
-@shift_bp.route('/goal', methods=['GET'])
+@shift_bp.route("/goal", methods=["GET"])
 @token_required
 def get_goal(current_user):
-    now = datetime.now(pytz.timezone('America/Sao_Paulo'))
-    year = int(request.args.get('year', now.year))
-    month = int(request.args.get('month', now.month))
+    now = datetime.now(pytz.timezone("America/Sao_Paulo"))
+    year = int(request.args.get("year", now.year))
+    month = int(request.args.get("month", now.month))
     # Meta personalizada
-    goal = db.session.query(FinancialGoal).filter_by(user_id=current_user.id, year=year, month=month).first()
+    goal = (
+        db.session.query(FinancialGoal)
+        .filter_by(user_id=current_user.id, year=year, month=month)
+        .first()
+    )
     if goal:
-        return jsonify({'year': year, 'month': month, 'value': goal.value, 'custom': True})
+        return jsonify(
+            {"year": year, "month": month, "value": goal.value, "custom": True}
+        )
     # Meta padrão
-    default_goal = db.session.query(FinancialGoal).filter_by(user_id=current_user.id, year=0, month=0).first()
+    default_goal = (
+        db.session.query(FinancialGoal)
+        .filter_by(user_id=current_user.id, year=0, month=0)
+        .first()
+    )
     if default_goal:
-        return jsonify({'year': year, 'month': month, 'value': default_goal.value, 'custom': False})
-    return jsonify({'year': year, 'month': month, 'value': 0, 'custom': False})
+        return jsonify(
+            {"year": year, "month": month, "value": default_goal.value, "custom": False}
+        )
+    return jsonify({"year": year, "month": month, "value": 0, "custom": False})
 
-@shift_bp.route('/goal', methods=['POST'])
+
+@shift_bp.route("/goal", methods=["POST"])
 @token_required
 def set_goal(current_user):
     data = request.get_json()
-    year = int(data.get('year', 0))
-    month = int(data.get('month', 0))
-    value = float(data.get('value', 0))
+    year = int(data.get("year", 0))
+    month = int(data.get("month", 0))
+    value = float(data.get("value", 0))
     if value <= 0:
-        return jsonify({'message': 'Valor da meta deve ser maior que zero.'}), 400
-    goal = db.session.query(FinancialGoal).filter_by(user_id=current_user.id, year=year, month=month).first()
+        return jsonify({"message": "Valor da meta deve ser maior que zero."}), 400
+    goal = (
+        db.session.query(FinancialGoal)
+        .filter_by(user_id=current_user.id, year=year, month=month)
+        .first()
+    )
     if not goal:
-        goal = FinancialGoal(user_id=current_user.id, year=year, month=month, value=value)
+        goal = FinancialGoal(
+            user_id=current_user.id, year=year, month=month, value=value
+        )
         db.session.add(goal)
     else:
         goal.value = value
     db.session.commit()
-    return jsonify({'message': 'Meta salva com sucesso.', 'goal': {'year': year, 'month': month, 'value': value}})
+    return jsonify(
+        {
+            "message": "Meta salva com sucesso.",
+            "goal": {"year": year, "month": month, "value": value},
+        }
+    )
 
-@shift_bp.route('/goal', methods=['DELETE'])
+
+@shift_bp.route("/goal", methods=["DELETE"])
 @token_required
 def remove_goal(current_user):
-    year = int(request.args.get('year', 0))
-    month = int(request.args.get('month', 0))
-    goal = db.session.query(FinancialGoal).filter_by(user_id=current_user.id, year=year, month=month).first()
+    year = int(request.args.get("year", 0))
+    month = int(request.args.get("month", 0))
+    goal = (
+        db.session.query(FinancialGoal)
+        .filter_by(user_id=current_user.id, year=year, month=month)
+        .first()
+    )
     if not goal:
-        return jsonify({'message': 'Meta não encontrada.'}), 404
+        return jsonify({"message": "Meta não encontrada."}), 404
     db.session.delete(goal)
     db.session.commit()
-    return jsonify({'message': 'Meta removida com sucesso.'})
+    return jsonify({"message": "Meta removida com sucesso."})
 
-@shift_bp.route('/goals', methods=['GET'])
+
+@shift_bp.route("/goals", methods=["GET"])
 @token_required
 def list_goals(current_user):
     goals = db.session.query(FinancialGoal).filter_by(user_id=current_user.id).all()
-    return jsonify([{'year': g.year, 'month': g.month, 'value': g.value} for g in goals])
+    return jsonify(
+        [{"year": g.year, "month": g.month, "value": g.value} for g in goals]
+    )
