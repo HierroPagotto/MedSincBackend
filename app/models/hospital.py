@@ -21,6 +21,7 @@ class Hospital(db.Model):
 
     shifts = relationship("Shift", back_populates="hospital")
     staff = relationship("HospitalStaff", back_populates="hospital")
+    opportunities = relationship("ShiftOpportunity", back_populates="hospital")
 
     def to_dict(self):
         result = {}
