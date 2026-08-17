@@ -87,7 +87,7 @@ class MarketplaceService:
             end_time=opportunity.end_time,
             value=opportunity.value,
             specialty=opportunity.specialty,
-            payment_date=None,
+            payment_date=opportunity.payment_date,
             status="scheduled",
             source=SOURCE_MARKETPLACE,
             opportunity_id=opportunity.id,

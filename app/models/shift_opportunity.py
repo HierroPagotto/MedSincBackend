@@ -37,6 +37,7 @@ class ShiftOpportunity(db.Model):
     end_time = Column(Time, nullable=False)
     specialty = Column(String(100), nullable=False, index=True)
     value = Column(Numeric(10, 2), nullable=False)
+    payment_date = Column(Date, nullable=True)
     city = Column(String(100), nullable=True, index=True)
     slots_total = Column(Integer, nullable=False, default=1)
     slots_filled = Column(Integer, nullable=False, default=0)
@@ -77,6 +78,11 @@ class ShiftOpportunity(db.Model):
             "specialty": self.specialty,
             "value": (
                 float(self.value) if isinstance(self.value, Decimal) else self.value
+            ),
+            "payment_date": (
+                self.payment_date.isoformat()
+                if isinstance(self.payment_date, date)
+                else self.payment_date
             ),
             "city": self.city,
             "slots_total": self.slots_total,

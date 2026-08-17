@@ -95,6 +95,9 @@ def notify_doctor_application_result(
             start_time=_fmt_time(opportunity.start_time),
             end_time=_fmt_time(opportunity.end_time),
             specialty=opportunity.specialty,
+            payment_date=_fmt_date(opportunity.payment_date)
+            if opportunity.payment_date
+            else None,
         )
     else:
         send_application_rejected_email(

@@ -10,6 +10,7 @@ class OpportunityCreate:
     end_time: time
     specialty: str
     value: float
+    payment_date: date
     city: Optional[str] = None
     slots_total: int = 1
     notes: Optional[str] = None
@@ -22,6 +23,7 @@ class OpportunityUpdate:
     end_time: Optional[time] = None
     specialty: Optional[str] = None
     value: Optional[float] = None
+    payment_date: Optional[date] = None
     city: Optional[str] = None
     slots_total: Optional[int] = None
     notes: Optional[str] = None

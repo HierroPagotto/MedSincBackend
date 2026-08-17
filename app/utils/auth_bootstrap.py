@@ -138,6 +138,9 @@ def ensure_auth_schema() -> None:
             "shifts", "source", "source VARCHAR(20) NOT NULL DEFAULT 'manual'"
         )
         _add_column_if_missing("shifts", "opportunity_id", "opportunity_id INT NULL")
+        _add_column_if_missing(
+            "shift_opportunities", "payment_date", "payment_date DATE NULL"
+        )
 
         _run_ddl_ignore_exists(
             "CREATE UNIQUE INDEX ix_doctors_user_id ON doctors (user_id)"

@@ -80,7 +80,11 @@ def send_application_approved_email(
     start_time: str,
     end_time: str,
     specialty: str,
+    payment_date: str | None = None,
 ) -> bool:
+    payment_line = (
+        f"Pagamento previsto: {payment_date}\n" if payment_date else ""
+    )
     body = f"""
 Olá {doctor_name},
 
@@ -90,7 +94,7 @@ Hospital: {hospital_name}
 Data: {opportunity_date}
 Horário: {start_time} – {end_time}
 Especialidade: {specialty}
-
+{payment_line}
 O plantão já aparece na sua agenda MedSinc.
 
 Atenciosamente,

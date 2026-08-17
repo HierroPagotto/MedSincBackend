@@ -33,6 +33,8 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
                 payload["specialty"] = data.get("specialty")
             if "value" in data:
                 payload["value"] = float(data.get("value"))
+            if "payment_date" in data:
+                payload["payment_date"] = parse_date(data.get("payment_date"))
             if "city" in data:
                 payload["city"] = data.get("city")
             if "slots_total" in data:
@@ -41,7 +43,7 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
                 payload["notes"] = data.get("notes")
             return OpportunityUpdate(**payload), None
 
-        required = ["date", "start_time", "end_time", "specialty", "value"]
+        required = ["date", "start_time", "end_time", "specialty", "value", "payment_date"]
         missing = [f for f in required if data.get(f) in (None, "")]
         if missing:
             return None, (
@@ -55,12 +57,22 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
             end_time=parse_time(data.get("end_time")),
             specialty=data.get("specialty"),
             value=float(data.get("value")),
+            payment_date=parse_date(data.get("payment_date")),
             city=data.get("city"),
             slots_total=int(data.get("slots_total") or 1),
             notes=data.get("notes"),
         )
         if create.slots_total < 1:
             return None, (jsonify({"message": "slots_total deve ser >= 1"}), 400)
+        if create.payment_date and create.date and create.payment_date < create.date:
+            return None, (
+                jsonify(
+                    {
+                        "message": "A data prevista de pagamento não pode ser anterior à data do plantão"
+                    }
+                ),
+                400,
+            )
         return create, None
     except (TypeError, ValueError) as exc:
         return None, (jsonify({"message": f"Payload inválido: {exc}"}), 400)
@@ -192,6 +204,22 @@ def update_opportunity(staff, opportunity_id):
     payload, error = _parse_opportunity_payload(data, partial=True)
     if error:
         return error
+
+    next_date = payload.date if payload.date is not None else opportunity.date
+    next_payment = (
+        payload.payment_date
+        if payload.payment_date is not None
+        else opportunity.payment_date
+    )
+    if next_payment and next_date and next_payment < next_date:
+        return (
+            jsonify(
+                {
+                    "message": "A data prevista de pagamento não pode ser anterior à data do plantão"
+                }
+            ),
+            400,
+        )
 
     updated = opportunity_repo.update(db.session, opportunity, payload)
     return jsonify(

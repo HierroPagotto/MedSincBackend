@@ -30,6 +30,7 @@ class OpportunityRepository:
             end_time=data.end_time,
             specialty=data.specialty,
             value=data.value,
+            payment_date=data.payment_date,
             city=data.city,
             slots_total=max(1, int(data.slots_total or 1)),
             slots_filled=0,
