@@ -225,6 +225,7 @@ def cancel_opportunity(staff, opportunity_id):
 def apply_to_opportunity(current_doctor, opportunity_id):
     from app.utils.schedule import doctor_has_conflicting_shift
     from app.utils.marketplace_notifications import notify_hospital_new_application
+    from app.services.notification_service import notification_service
 
     opportunity = opportunity_repo.get_by_id(db.session, opportunity_id)
     if not opportunity:
@@ -287,6 +288,15 @@ def apply_to_opportunity(current_doctor, opportunity_id):
         )
 
     notify_hospital_new_application(opportunity=opportunity, doctor=current_doctor)
+    try:
+        notification_service.notify_new_application(
+            db.session,
+            opportunity=opportunity,
+            doctor=current_doctor,
+            application_id=application.id,
+        )
+    except Exception as exc:
+        print(f"Falha notificação in-app nova candidatura: {exc}")
 
     return (
         jsonify(
