@@ -117,6 +117,7 @@ def ensure_auth_schema() -> None:
         FinancialGoal,
         ShiftOpportunity,
         OpportunityApplication,
+        Notification,
     )
 
     locked = _acquire_bootstrap_lock()

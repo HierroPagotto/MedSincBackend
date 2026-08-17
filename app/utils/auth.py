@@ -75,6 +75,21 @@ def token_required(f):
     return decorated
 
 
+def authenticated_user_required(f):
+    """Exige qualquer usuário autenticado ativo. Injeta User."""
+
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        loaded, error = _load_user_from_token()
+        if error:
+            return error
+
+        user, _payload = loaded
+        return f(user, *args, **kwargs)
+
+    return decorated
+
+
 def hospital_staff_required(f):
     """Exige hospital_staff. Injeta HospitalStaff."""
 

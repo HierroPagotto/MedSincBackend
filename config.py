@@ -18,3 +18,4 @@ class Config:
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER")
+    NOTIFICATIONS_JOB_SECRET = os.environ.get("NOTIFICATIONS_JOB_SECRET", "")

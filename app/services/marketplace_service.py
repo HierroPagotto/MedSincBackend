@@ -15,6 +15,7 @@ from app.repositories.application_repository import ApplicationRepository
 from app.repositories.opportunity_repository import OpportunityRepository
 from app.utils.schedule import doctor_has_conflicting_shift
 from app.utils.marketplace_notifications import notify_doctor_application_result
+from app.services.notification_service import notification_service
 
 
 class MarketplaceService:
@@ -126,6 +127,16 @@ class MarketplaceService:
                 opportunity=opportunity,
                 approved=True,
             )
+            try:
+                notification_service.notify_application_result(
+                    session,
+                    doctor=application.doctor,
+                    opportunity=opportunity,
+                    approved=True,
+                    commit=False,
+                )
+            except Exception as exc:
+                print(f"Falha notificação in-app aprovação: {exc}")
         for rejected in rejected_apps:
             session.refresh(rejected)
             if rejected.doctor:
@@ -134,6 +145,26 @@ class MarketplaceService:
                     opportunity=opportunity,
                     approved=False,
                 )
+                try:
+                    notification_service.notify_application_result(
+                        session,
+                        doctor=rejected.doctor,
+                        opportunity=opportunity,
+                        approved=False,
+                        commit=False,
+                    )
+                except Exception as exc:
+                    print(f"Falha notificação in-app rejeição: {exc}")
+
+        if opportunity.status == STATUS_FILLED:
+            try:
+                notification_service.notify_opportunity_filled(
+                    session, opportunity=opportunity, commit=False
+                )
+            except Exception as exc:
+                print(f"Falha notificação vaga preenchida: {exc}")
+
+        session.commit()
 
         return {
             "message": "Candidatura aprovada",
@@ -180,6 +211,15 @@ class MarketplaceService:
                 opportunity=opportunity,
                 approved=False,
             )
+            try:
+                notification_service.notify_application_result(
+                    session,
+                    doctor=application.doctor,
+                    opportunity=opportunity,
+                    approved=False,
+                )
+            except Exception as exc:
+                print(f"Falha notificação in-app rejeição: {exc}")
 
         return {
             "message": "Candidatura rejeitada",

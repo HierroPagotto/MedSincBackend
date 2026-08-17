@@ -33,6 +33,7 @@ def doctor_has_conflicting_shift(
     opportunity_date: date,
     start_time: time,
     end_time: time,
+    exclude_shift_id: int | None = None,
 ) -> Shift | None:
     """
     Conflito com plantões scheduled/completed/paid.
@@ -42,15 +43,14 @@ def doctor_has_conflicting_shift(
 
     day_before = opportunity_date - timedelta(days=1)
     day_after = opportunity_date + timedelta(days=1)
-    candidates = (
-        db.query(Shift)
-        .filter(
-            Shift.doctor_id == doctor_id,
-            Shift.status.in_(["scheduled", "completed", "paid"]),
-            Shift.date.in_([day_before, opportunity_date, day_after]),
-        )
-        .all()
+    query = db.query(Shift).filter(
+        Shift.doctor_id == doctor_id,
+        Shift.status.in_(["scheduled", "completed", "paid"]),
+        Shift.date.in_([day_before, opportunity_date, day_after]),
     )
+    if exclude_shift_id is not None:
+        query = query.filter(Shift.id != exclude_shift_id)
+    candidates = query.all()
 
     for shift in candidates:
         for s_start, s_end in shift_intervals(

@@ -9,6 +9,8 @@ from app.database import db
 from app.utils.auth import token_required
 from app.models.financial_goal import FinancialGoal
 from app.models.shift import SOURCE_MARKETPLACE
+from app.utils.schedule import doctor_has_conflicting_shift
+from app.services.notification_service import notification_service
 from sqlalchemy import extract
 
 shift_bp = Blueprint("shift", __name__)
@@ -27,6 +29,27 @@ def _is_marketplace_shift(shift) -> bool:
     )
 
 
+def _notify_conflict_if_any(doctor, shift) -> None:
+    try:
+        conflict = doctor_has_conflicting_shift(
+            db.session,
+            doctor_id=doctor.id,
+            opportunity_date=shift.date,
+            start_time=shift.start_time,
+            end_time=shift.end_time,
+            exclude_shift_id=shift.id,
+        )
+        if conflict:
+            notification_service.notify_schedule_conflict(
+                db.session,
+                doctor=doctor,
+                shift=shift,
+                conflicting=conflict,
+            )
+    except Exception as exc:
+        print(f"Falha ao notificar conflito: {exc}")
+
+
 @shift_bp.route("/", methods=["POST"])
 @token_required
 def create_shift(current_user):
@@ -40,6 +63,7 @@ def create_shift(current_user):
         for shift in shifts:
             payment_data = PaymentCreate(shift_id=shift.id, amount=shift.value)
             payment_repository.create(db.session, payment_data)
+            _notify_conflict_if_any(current_user, shift)
 
         return {"message": f"{len(shifts)} plantões criados com sucesso!"}
     else:
@@ -48,6 +72,7 @@ def create_shift(current_user):
 
         payment_data = PaymentCreate(shift_id=shift.id, amount=shift.value)
         payment_repository.create(db.session, payment_data)
+        _notify_conflict_if_any(current_user, shift)
 
         return {"message": "Plantão criado com sucesso!"}
 
@@ -95,6 +120,11 @@ def paid_shift(current_user, shift_id):
 
     payment = payment_repository.get_by_shift(db.session, shift_id)
     payment_repository.update_status(db.session, payment, "paid")
+
+    try:
+        notification_service.maybe_notify_goal_progress(db.session, current_user)
+    except Exception as exc:
+        print(f"Falha ao notificar meta: {exc}")
 
     return {"message": "Atualizado com sucesso!"}
 
@@ -215,6 +245,7 @@ def update_shift(current_user, shift_id):
     data = request.get_json()
     update_data = ShiftUpdate(**data)
     shift_repository.update(db.session, shift, update_data)
+    _notify_conflict_if_any(current_user, shift)
     return jsonify(
         {"message": "Plantão atualizado com sucesso", "shift": shift.to_dict()}
     )
@@ -272,6 +303,10 @@ def set_goal(current_user):
     else:
         goal.value = value
     db.session.commit()
+    try:
+        notification_service.maybe_notify_goal_progress(db.session, current_user)
+    except Exception as exc:
+        print(f"Falha ao notificar meta: {exc}")
     return jsonify(
         {
             "message": "Meta salva com sucesso.",
