@@ -1,4 +1,4 @@
-"""Criação e consulta de notificações in-app (Fase 1)."""
+"""Criação e consulta de notificações in-app (Fase 1) e e-mail opt-out (Fase 2)."""
 
 from __future__ import annotations
 
@@ -23,9 +23,15 @@ from app.models.notification import (
     TYPE_SCHEDULE_CONFLICT,
     TYPE_SHIFT_TOMORROW,
 )
+from app.models.notification_preference import (
+    EDITABLE_FIELDS,
+    NotificationPreference,
+)
 from app.models.shift import Shift
 from app.models.user import User
+from app.utils.email import send_email
 from app.utils.security import STAFF_ADMIN
+from config import Config
 
 
 def _fmt_date(value: date | None) -> str:
@@ -41,6 +47,82 @@ def _fmt_time(value: time | None) -> str:
 
 
 class NotificationService:
+    def get_preferences(
+        self, session: Session, user_id: int, *, commit: bool = True
+    ) -> NotificationPreference | None:
+        if not user_id:
+            return None
+        prefs = (
+            session.query(NotificationPreference)
+            .filter(NotificationPreference.user_id == user_id)
+            .first()
+        )
+        if prefs:
+            return prefs
+
+        prefs = NotificationPreference(user_id=user_id)
+        session.add(prefs)
+        try:
+            if commit:
+                session.commit()
+                session.refresh(prefs)
+            else:
+                session.flush()
+        except Exception:
+            session.rollback()
+            prefs = (
+                session.query(NotificationPreference)
+                .filter(NotificationPreference.user_id == user_id)
+                .first()
+            )
+        return prefs
+
+    def update_preferences(
+        self, session: Session, user_id: int, payload: dict[str, Any]
+    ) -> NotificationPreference | None:
+        prefs = self.get_preferences(session, user_id)
+        if not prefs:
+            return None
+        for field in EDITABLE_FIELDS:
+            if field in payload:
+                setattr(prefs, field, bool(payload[field]))
+        prefs.updated_at = datetime.now(pytz.UTC)
+        session.commit()
+        session.refresh(prefs)
+        return prefs
+
+    def email_allowed(self, session: Session, user_id: int, type: str) -> bool:
+        prefs = self.get_preferences(session, user_id, commit=False)
+        if not prefs:
+            return True
+        return prefs.allows_email(type)
+
+    def _send_notification_email(
+        self, session: Session, notification: Notification
+    ) -> None:
+        """E-mail espelhando a notificação in-app. Falha nunca quebra o fluxo."""
+        try:
+            if not self.email_allowed(session, notification.user_id, notification.type):
+                return
+            user = session.query(User).get(notification.user_id)
+            email = getattr(user, "email", None)
+            if not email:
+                return
+
+            href = (notification.data or {}).get("href")
+            link = f"{Config.APP_BASE_URL}{href}" if href else Config.APP_BASE_URL
+            body = (
+                f"Olá,\n\n"
+                f"{notification.body}\n\n"
+                f"Acesse: {link}\n\n"
+                "Para desativar estes e-mails, entre em Configurações > "
+                "Notificações por e-mail.\n\n"
+                "Atenciosamente,\nMedSinc\n"
+            )
+            send_email(email, f"MedSinc - {notification.title}", body)
+        except Exception as exc:
+            print(f"Falha ao enviar e-mail de notificação: {exc}")
+
     def create(
         self,
         session: Session,
@@ -52,6 +134,7 @@ class NotificationService:
         data: dict[str, Any] | None = None,
         dedupe_key: str | None = None,
         commit: bool = True,
+        send_email_copy: bool = True,
     ) -> Notification | None:
         if not user_id:
             return None
@@ -83,6 +166,9 @@ class NotificationService:
             session.refresh(notification)
         else:
             session.flush()
+
+        if send_email_copy:
+            self._send_notification_email(session, notification)
         return notification
 
     def list_for_user(
@@ -167,6 +253,7 @@ class NotificationService:
         data: dict[str, Any] | None = None,
         dedupe_key_prefix: str | None = None,
         commit: bool = True,
+        send_email_copy: bool = True,
     ) -> int:
         staff_list = (
             session.query(HospitalStaff)
@@ -207,6 +294,7 @@ class NotificationService:
                 data=data,
                 dedupe_key=dedupe,
                 commit=False,
+                send_email_copy=send_email_copy,
             )
             if result:
                 created += 1
@@ -405,6 +493,7 @@ class NotificationService:
                     else None
                 ),
                 commit=commit,
+                send_email_copy=False,
             )
         return self.create(
             session,
@@ -420,6 +509,7 @@ class NotificationService:
                 f"app_rejected:{opportunity.id}:{doctor.id}" if opportunity else None
             ),
             commit=commit,
+            send_email_copy=False,
         )
 
     def notify_new_application(
@@ -449,6 +539,7 @@ class NotificationService:
             },
             dedupe_key_prefix=f"new_app:{application_id}",
             commit=commit,
+            send_email_copy=False,
         )
 
     def notify_opportunity_filled(

@@ -2,9 +2,15 @@
 
 from app.models.doctor import Doctor
 from app.models.hospital_staff import HospitalStaff
+from app.models.notification import (
+    TYPE_APPLICATION_APPROVED,
+    TYPE_APPLICATION_REJECTED,
+    TYPE_NEW_APPLICATION,
+)
 from app.models.shift_opportunity import ShiftOpportunity
 from app.models.user import User
 from app.database import db
+from app.services.notification_service import notification_service
 from app.utils.email import (
     send_new_application_email,
     send_application_approved_email,
@@ -52,6 +58,10 @@ def notify_hospital_new_application(
         email = staff.user.email if staff.user else None
         if not email:
             continue
+        if not notification_service.email_allowed(
+            db.session, staff.user_id, TYPE_NEW_APPLICATION
+        ):
+            continue
         send_new_application_email(
             to_email=email,
             staff_name=staff.name,
@@ -69,6 +79,13 @@ def notify_doctor_application_result(
     approved: bool,
 ) -> None:
     hospital_name = opportunity.hospital.name if opportunity.hospital else "Hospital"
+    notification_type = (
+        TYPE_APPLICATION_APPROVED if approved else TYPE_APPLICATION_REJECTED
+    )
+    if doctor.user_id and not notification_service.email_allowed(
+        db.session, doctor.user_id, notification_type
+    ):
+        return
     if approved:
         send_application_approved_email(
             to_email=doctor.email,

@@ -19,3 +19,4 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER")
     NOTIFICATIONS_JOB_SECRET = os.environ.get("NOTIFICATIONS_JOB_SECRET", "")
+    APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://medsinc.com.br").rstrip("/")

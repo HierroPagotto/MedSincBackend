@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 import os
 
 from app.database import db
+from app.models.notification_preference import EDITABLE_FIELDS
 from app.utils.auth import authenticated_user_required
 from app.services.notification_service import notification_service
 
@@ -71,6 +72,34 @@ def mark_read(current_user, notification_id):
 def mark_all_read(current_user):
     updated = notification_service.mark_all_read(db.session, current_user.id)
     return jsonify({"message": "Notificações marcadas como lidas", "updated": updated})
+
+
+@notifications_bp.route("/preferences", methods=["GET"])
+@authenticated_user_required
+def get_preferences(current_user):
+    prefs = notification_service.get_preferences(db.session, current_user.id)
+    if not prefs:
+        return jsonify({"message": "Preferências não encontradas"}), 404
+    return jsonify(prefs.to_dict())
+
+
+@notifications_bp.route("/preferences", methods=["PUT"])
+@authenticated_user_required
+def update_preferences(current_user):
+    payload = request.get_json(silent=True) or {}
+    known = {field: payload[field] for field in EDITABLE_FIELDS if field in payload}
+    if not known:
+        return jsonify({"message": "Nenhuma preferência válida enviada"}), 400
+    for field, value in known.items():
+        if not isinstance(value, bool):
+            return jsonify({"message": f"{field} deve ser booleano"}), 400
+
+    prefs = notification_service.update_preferences(db.session, current_user.id, known)
+    if not prefs:
+        return jsonify({"message": "Preferências não encontradas"}), 404
+    return jsonify(
+        {"message": "Preferências atualizadas", "preferences": prefs.to_dict()}
+    )
 
 
 @jobs_bp.route("/notifications/daily", methods=["POST"])

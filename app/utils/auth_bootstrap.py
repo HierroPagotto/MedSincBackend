@@ -118,6 +118,7 @@ def ensure_auth_schema() -> None:
         ShiftOpportunity,
         OpportunityApplication,
         Notification,
+        NotificationPreference,
     )
 
     locked = _acquire_bootstrap_lock()

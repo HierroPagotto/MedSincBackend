@@ -8,6 +8,7 @@ from .hospital_staff import HospitalStaff
 from .shift_opportunity import ShiftOpportunity
 from .opportunity_application import OpportunityApplication
 from .notification import Notification
+from .notification_preference import NotificationPreference
 
 __all__ = [
     "Doctor",
@@ -20,4 +21,5 @@ __all__ = [
     "ShiftOpportunity",
     "OpportunityApplication",
     "Notification",
+    "NotificationPreference",
 ]
