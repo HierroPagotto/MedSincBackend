@@ -141,6 +141,26 @@ def ensure_auth_schema() -> None:
         _add_column_if_missing(
             "shift_opportunities", "payment_date", "payment_date DATE NULL"
         )
+        _add_column_if_missing(
+            "shift_opportunities",
+            "requires_acls",
+            "requires_acls BOOLEAN NOT NULL DEFAULT 0",
+        )
+        _add_column_if_missing(
+            "shift_opportunities",
+            "requires_bls",
+            "requires_bls BOOLEAN NOT NULL DEFAULT 0",
+        )
+        _add_column_if_missing(
+            "shift_opportunities",
+            "requires_atls",
+            "requires_atls BOOLEAN NOT NULL DEFAULT 0",
+        )
+        _add_column_if_missing(
+            "shift_opportunities",
+            "requires_pals",
+            "requires_pals BOOLEAN NOT NULL DEFAULT 0",
+        )
 
         _run_ddl_ignore_exists(
             "CREATE UNIQUE INDEX ix_doctors_user_id ON doctors (user_id)"

@@ -8,6 +8,8 @@ from app.models.shift_opportunity import (
     STATUS_CANCELLED,
 )
 from app.schemas.marketplace import OpportunityCreate, OpportunityUpdate
+from app.utils.marketplace_requirements import apply_requirements_filter
+from app.models.doctor import Doctor
 
 
 class OpportunityRepository:
@@ -31,6 +33,10 @@ class OpportunityRepository:
             specialty=data.specialty,
             value=data.value,
             payment_date=data.payment_date,
+            requires_acls=data.requires_acls,
+            requires_bls=data.requires_bls,
+            requires_atls=data.requires_atls,
+            requires_pals=data.requires_pals,
             city=data.city,
             slots_total=max(1, int(data.slots_total or 1)),
             slots_filled=0,
@@ -67,6 +73,7 @@ class OpportunityRepository:
         verified_only: bool = False,
         page: int = 1,
         per_page: int = 20,
+        doctor: Doctor | None = None,
     ) -> tuple[list[ShiftOpportunity], int]:
         from app.models.hospital import Hospital
 
@@ -86,6 +93,8 @@ class OpportunityRepository:
             query = query.filter(ShiftOpportunity.date >= date_from)
         if date_to:
             query = query.filter(ShiftOpportunity.date <= date_to)
+
+        query = apply_requirements_filter(query, doctor)
 
         total = query.count()
         page = max(1, int(page or 1))

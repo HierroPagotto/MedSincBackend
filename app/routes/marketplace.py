@@ -19,6 +19,17 @@ application_repo = ApplicationRepository()
 marketplace_service = MarketplaceService()
 
 
+def _parse_bool(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    return text in ("1", "true", "yes", "on")
+
+
 def _parse_opportunity_payload(data: dict, *, partial: bool = False):
     try:
         if partial:
@@ -41,9 +52,24 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
                 payload["slots_total"] = int(data.get("slots_total"))
             if "notes" in data:
                 payload["notes"] = data.get("notes")
+            for req_field in (
+                "requires_acls",
+                "requires_bls",
+                "requires_atls",
+                "requires_pals",
+            ):
+                if req_field in data:
+                    payload[req_field] = _parse_bool(data.get(req_field))
             return OpportunityUpdate(**payload), None
 
-        required = ["date", "start_time", "end_time", "specialty", "value", "payment_date"]
+        required = [
+            "date",
+            "start_time",
+            "end_time",
+            "specialty",
+            "value",
+            "payment_date",
+        ]
         missing = [f for f in required if data.get(f) in (None, "")]
         if missing:
             return None, (
@@ -61,6 +87,10 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
             city=data.get("city"),
             slots_total=int(data.get("slots_total") or 1),
             notes=data.get("notes"),
+            requires_acls=_parse_bool(data.get("requires_acls")),
+            requires_bls=_parse_bool(data.get("requires_bls")),
+            requires_atls=_parse_bool(data.get("requires_atls")),
+            requires_pals=_parse_bool(data.get("requires_pals")),
         )
         if create.slots_total < 1:
             return None, (jsonify({"message": "slots_total deve ser >= 1"}), 400)
@@ -106,6 +136,7 @@ def list_open_opportunities(current_doctor):
         verified_only=verified_only,
         page=page,
         per_page=per_page,
+        doctor=current_doctor,
     )
     return jsonify(
         {
@@ -263,6 +294,12 @@ def apply_to_opportunity(current_doctor, opportunity_id):
             jsonify({"message": "Oportunidade não está aberta para candidaturas"}),
             400,
         )
+
+    from app.utils.marketplace_requirements import doctor_meets_requirements
+
+    meets, reason = doctor_meets_requirements(current_doctor, opportunity)
+    if not meets:
+        return jsonify({"message": reason}), 403
 
     conflict = doctor_has_conflicting_shift(
         db.session,

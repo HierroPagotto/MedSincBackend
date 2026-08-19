@@ -2,6 +2,7 @@ from datetime import datetime as dt, date, time
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     Column,
     Integer,
     String,
@@ -38,6 +39,10 @@ class ShiftOpportunity(db.Model):
     specialty = Column(String(100), nullable=False, index=True)
     value = Column(Numeric(10, 2), nullable=False)
     payment_date = Column(Date, nullable=True)
+    requires_acls = Column(Boolean, nullable=False, default=False, server_default="0")
+    requires_bls = Column(Boolean, nullable=False, default=False, server_default="0")
+    requires_atls = Column(Boolean, nullable=False, default=False, server_default="0")
+    requires_pals = Column(Boolean, nullable=False, default=False, server_default="0")
     city = Column(String(100), nullable=True, index=True)
     slots_total = Column(Integer, nullable=False, default=1)
     slots_filled = Column(Integer, nullable=False, default=0)
@@ -84,6 +89,10 @@ class ShiftOpportunity(db.Model):
                 if isinstance(self.payment_date, date)
                 else self.payment_date
             ),
+            "requires_acls": bool(self.requires_acls),
+            "requires_bls": bool(self.requires_bls),
+            "requires_atls": bool(self.requires_atls),
+            "requires_pals": bool(self.requires_pals),
             "city": self.city,
             "slots_total": self.slots_total,
             "slots_filled": self.slots_filled,

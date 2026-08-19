@@ -14,6 +14,10 @@ class OpportunityCreate:
     city: Optional[str] = None
     slots_total: int = 1
     notes: Optional[str] = None
+    requires_acls: bool = False
+    requires_bls: bool = False
+    requires_atls: bool = False
+    requires_pals: bool = False
 
 
 @dataclass
@@ -27,3 +31,7 @@ class OpportunityUpdate:
     city: Optional[str] = None
     slots_total: Optional[int] = None
     notes: Optional[str] = None
+    requires_acls: Optional[bool] = None
+    requires_bls: Optional[bool] = None
+    requires_atls: Optional[bool] = None
+    requires_pals: Optional[bool] = None
