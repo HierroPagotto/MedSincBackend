@@ -25,12 +25,34 @@ def get_doctor(doctor_id):
 
 @doctor_bp.route("/", methods=["POST"])
 def create_doctor():
-    data = request.get_json()
-    if data and data.get("email"):
-        data = {**data, "email": data["email"].strip().lower()}
-    doctor_data = DoctorCreate(**data)
+    from dataclasses import fields
+    from sqlalchemy.exc import IntegrityError
 
     from app.repositories.user_repository import UserRepository
+
+    data = request.get_json() or {}
+    if data.get("email"):
+        data = {**data, "email": str(data["email"]).strip().lower()}
+
+    required = ("name", "email", "password", "main_specialty")
+    missing = [f for f in required if not str(data.get(f) or "").strip()]
+    if missing:
+        return (
+            jsonify({"message": "Dados incompletos", "missing": missing}),
+            400,
+        )
+
+    for key in ("crm", "crm_state", "city", "phone", "state"):
+        if key in data and (data[key] is None or str(data[key]).strip() == ""):
+            data[key] = None
+
+    allowed = {f.name for f in fields(DoctorCreate)}
+    payload = {k: v for k, v in data.items() if k in allowed}
+
+    try:
+        doctor_data = DoctorCreate(**payload)
+    except TypeError:
+        return jsonify({"message": "Dados inválidos"}), 400
 
     user_repository = UserRepository()
 
@@ -39,8 +61,16 @@ def create_doctor():
     ) or user_repository.get_by_email(db.session, doctor_data.email):
         return jsonify({"message": "Email já cadastrado"}), 400
 
-    doctor_repository.create(db.session, doctor_data)
-    return {"message": "Criado com sucesso!"}
+    try:
+        doctor_repository.create(db.session, doctor_data)
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"message": "Não foi possível criar a conta"}), 400
+    except Exception:
+        db.session.rollback()
+        return jsonify({"message": "Erro ao criar conta"}), 500
+
+    return jsonify({"message": "Criado com sucesso!"})
 
 
 @doctor_bp.route("/me", methods=["GET"])

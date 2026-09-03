@@ -14,6 +14,14 @@ class DoctorRepository:
     def __init__(self):
         self.user_repository = UserRepository()
 
+    @staticmethod
+    def _blank_to_none(value):
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     def create(self, db: Session, doctor: DoctorCreate) -> Doctor:
         hashed_password = hash_password(doctor.password)
         email = doctor.email.strip().lower()
@@ -33,12 +41,12 @@ class DoctorRepository:
             photo_url=doctor.photo_url,
             email=email,
             password=hashed_password,
-            crm=doctor.crm,
-            crm_state=doctor.crm_state,
+            crm=self._blank_to_none(doctor.crm),
+            crm_state=self._blank_to_none(doctor.crm_state),
             graduation_year=doctor.graduation_year,
-            city=doctor.city,
-            phone=doctor.phone,
-            main_specialty=doctor.main_specialty,
+            city=self._blank_to_none(doctor.city),
+            phone=self._blank_to_none(doctor.phone),
+            main_specialty=doctor.main_specialty.strip(),
             procedures=doctor.procedures,
             shift_types=doctor.shift_types,
             preferred_periods=doctor.preferred_periods,
@@ -46,7 +54,7 @@ class DoctorRepository:
             accepts_fixed_shifts=doctor.accepts_fixed_shifts,
             accepts_temporary_shifts=doctor.accepts_temporary_shifts,
             max_distance_km=doctor.max_distance_km,
-            state=doctor.state,
+            state=self._blank_to_none(doctor.state),
             cities_of_work=doctor.cities_of_work,
             acls=doctor.acls,
             bls=doctor.bls,

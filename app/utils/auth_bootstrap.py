@@ -85,6 +85,19 @@ def _run_ddl_ignore_exists(sql: str) -> None:
         db.session.rollback()
 
 
+def _make_doctor_signup_columns_nullable() -> None:
+    """Profile fields collected after signup must accept NULL on existing DBs."""
+    for ddl in (
+        "ALTER TABLE doctors MODIFY COLUMN crm VARCHAR(20) NULL",
+        "ALTER TABLE doctors MODIFY COLUMN crm_state VARCHAR(2) NULL",
+        "ALTER TABLE doctors MODIFY COLUMN graduation_year INT NULL",
+        "ALTER TABLE doctors MODIFY COLUMN city VARCHAR(100) NULL",
+        "ALTER TABLE doctors MODIFY COLUMN phone VARCHAR(20) NULL",
+        "ALTER TABLE doctors MODIFY COLUMN state VARCHAR(2) NULL",
+    ):
+        _run_ddl_ignore_exists(ddl)
+
+
 def _acquire_bootstrap_lock() -> bool:
     """Evita dois workers migrando ao mesmo tempo (MySQL GET_LOCK)."""
     try:
@@ -126,6 +139,9 @@ def ensure_auth_schema() -> None:
         _create_all_safe()
 
         _add_column_if_missing("doctors", "user_id", "user_id INT NULL")
+
+        # Allow doctor signup without full profile (CRM, city, etc.)
+        _make_doctor_signup_columns_nullable()
 
         _add_column_if_missing("hospitals", "city", "city VARCHAR(100) NULL")
         _add_column_if_missing("hospitals", "state", "state VARCHAR(2) NULL")

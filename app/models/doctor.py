@@ -17,11 +17,11 @@ class Doctor(db.Model):
     photo_url = Column(String(255))
     email = Column(String(100), unique=True, nullable=False)
     password = Column(String(255), nullable=False)
-    crm = Column(String(20), unique=True, nullable=False)
-    crm_state = Column(String(2), nullable=False)
-    graduation_year = Column(Integer, nullable=False)
-    city = Column(String(100), nullable=False)
-    phone = Column(String(20), nullable=False)
+    crm = Column(String(20), unique=True, nullable=True)
+    crm_state = Column(String(2), nullable=True)
+    graduation_year = Column(Integer, nullable=True)
+    city = Column(String(100), nullable=True)
+    phone = Column(String(20), nullable=True)
 
     main_specialty = Column(String(100), nullable=False)
     procedures = Column(Text)
@@ -33,7 +33,7 @@ class Doctor(db.Model):
     accepts_temporary_shifts = Column(Boolean, default=True)
     max_distance_km = Column(Integer)
 
-    state = Column(String(2), nullable=False)
+    state = Column(String(2), nullable=True)
     cities_of_work = Column(Text)
 
     acls = Column(Boolean, default=False)
