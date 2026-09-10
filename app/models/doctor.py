@@ -3,7 +3,6 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Foreign
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import db
-from app.utils.professions import PROFESSION_DOCTOR, COUNCIL_CRM
 
 
 class Doctor(db.Model):
@@ -19,9 +18,7 @@ class Doctor(db.Model):
     email = Column(String(100), unique=True, nullable=False)
     password = Column(String(255), nullable=False)
 
-    profession = Column(
-        String(40), nullable=False, default=PROFESSION_DOCTOR, index=True
-    )
+    profession = Column(String(40), nullable=False, default="doctor", index=True)
     council_type = Column(String(20), nullable=True)
     council_number = Column(String(20), nullable=True)
     council_state = Column(String(2), nullable=True)
@@ -106,13 +103,13 @@ class Doctor(db.Model):
 
         # Compat: se council vazio mas CRM legado preenchido
         if not result.get("council_number") and result.get("crm"):
-            result["council_type"] = result.get("council_type") or COUNCIL_CRM
+            result["council_type"] = result.get("council_type") or "CRM"
             result["council_number"] = result.get("crm")
             result["council_state"] = result.get("council_state") or result.get(
                 "crm_state"
             )
         if not result.get("profession"):
-            result["profession"] = PROFESSION_DOCTOR
+            result["profession"] = "doctor"
 
         if include_shifts and self.shifts:
             result["shifts"] = [shift.to_dict() for shift in self.shifts]

@@ -1,4 +1,6 @@
 from flask import Blueprint, request, jsonify
+from sqlalchemy.exc import IntegrityError
+
 from app.repositories.doctor_repository import DoctorRepository
 from app.repositories.hospital_repository import HospitalRepository
 from app.database import db
@@ -23,26 +25,69 @@ def list_users(current_user):
 @token_required
 @admin_required
 def delete_user(current_user, user_id):
+    from app.models.user import User
+    from app.models.notification import Notification
+    from app.models.opportunity_application import OpportunityApplication
+    from app.models.financial_goal import FinancialGoal
+    from app.models.doctor_specialty import DoctorSpecialty, DoctorPracticeArea
+
     doctor = doctor_repository.get_by_id(db.session, user_id)
     if not doctor:
         return jsonify({"message": "Usuário não encontrado"}), 404
 
-    from app.models.user import User
+    if current_user.id == user_id:
+        return (
+            jsonify({"message": "Você não pode deletar a própria conta por aqui"}),
+            400,
+        )
 
-    shifts = db.session.query(Shift).filter_by(doctor_id=user_id).all()
-    for shift in shifts:
-        payments = db.session.query(Payment).filter_by(shift_id=shift.id).all()
-        for payment in payments:
-            db.session.delete(payment)
-        db.session.delete(shift)
+    try:
+        db.session.query(OpportunityApplication).filter_by(doctor_id=user_id).delete(
+            synchronize_session=False
+        )
+        db.session.query(FinancialGoal).filter_by(user_id=user_id).delete(
+            synchronize_session=False
+        )
+        db.session.query(DoctorSpecialty).filter_by(doctor_id=user_id).delete(
+            synchronize_session=False
+        )
+        db.session.query(DoctorPracticeArea).filter_by(doctor_id=user_id).delete(
+            synchronize_session=False
+        )
 
-    linked_user_id = doctor.user_id
-    db.session.delete(doctor)
-    if linked_user_id:
-        user = db.session.query(User).filter(User.id == linked_user_id).first()
-        if user:
-            db.session.delete(user)
-    db.session.commit()
+        shifts = db.session.query(Shift).filter_by(doctor_id=user_id).all()
+        for shift in shifts:
+            payments = db.session.query(Payment).filter_by(shift_id=shift.id).all()
+            for payment in payments:
+                db.session.delete(payment)
+            db.session.delete(shift)
+
+        linked_user_id = doctor.user_id
+        db.session.delete(doctor)
+
+        if linked_user_id:
+            db.session.query(Notification).filter_by(user_id=linked_user_id).delete(
+                synchronize_session=False
+            )
+            user = db.session.query(User).filter(User.id == linked_user_id).first()
+            if user:
+                db.session.delete(user)
+
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return (
+            jsonify(
+                {
+                    "message": "Não foi possível deletar: há registros vinculados a este usuário"
+                }
+            ),
+            409,
+        )
+    except Exception:
+        db.session.rollback()
+        return jsonify({"message": "Erro ao deletar usuário"}), 500
+
     return jsonify(
         {"message": "Usuário, plantões e pagamentos associados deletados com sucesso"}
     )
@@ -68,24 +113,54 @@ def delete_hospital(current_user, hospital_id):
 
     from app.models.hospital_staff import HospitalStaff
     from app.models.user import User
+    from app.models.notification import Notification
+    from app.models.shift_opportunity import ShiftOpportunity
+    from app.models.opportunity_application import OpportunityApplication
 
-    staff_members = (
-        db.session.query(HospitalStaff).filter_by(hospital_id=hospital_id).all()
-    )
-    for member in staff_members:
-        user = db.session.query(User).filter(User.id == member.user_id).first()
-        db.session.delete(member)
-        if user:
-            db.session.delete(user)
+    try:
+        opportunities = (
+            db.session.query(ShiftOpportunity).filter_by(hospital_id=hospital_id).all()
+        )
+        for opportunity in opportunities:
+            db.session.query(OpportunityApplication).filter_by(
+                opportunity_id=opportunity.id
+            ).delete(synchronize_session=False)
+            db.session.delete(opportunity)
 
-    shifts = db.session.query(Shift).filter_by(hospital_id=hospital_id).all()
-    for shift in shifts:
-        payments = db.session.query(Payment).filter_by(shift_id=shift.id).all()
-        for payment in payments:
-            db.session.delete(payment)
-        db.session.delete(shift)
-    db.session.delete(hospital)
-    db.session.commit()
+        staff_members = (
+            db.session.query(HospitalStaff).filter_by(hospital_id=hospital_id).all()
+        )
+        for member in staff_members:
+            user = db.session.query(User).filter(User.id == member.user_id).first()
+            db.session.delete(member)
+            if user:
+                db.session.query(Notification).filter_by(user_id=user.id).delete(
+                    synchronize_session=False
+                )
+                db.session.delete(user)
+
+        shifts = db.session.query(Shift).filter_by(hospital_id=hospital_id).all()
+        for shift in shifts:
+            payments = db.session.query(Payment).filter_by(shift_id=shift.id).all()
+            for payment in payments:
+                db.session.delete(payment)
+            db.session.delete(shift)
+        db.session.delete(hospital)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return (
+            jsonify(
+                {
+                    "message": "Não foi possível deletar: há registros vinculados a este hospital"
+                }
+            ),
+            409,
+        )
+    except Exception:
+        db.session.rollback()
+        return jsonify({"message": "Erro ao deletar hospital"}), 500
+
     return jsonify(
         {"message": "Hospital, plantões e pagamentos associados deletados com sucesso"}
     )
