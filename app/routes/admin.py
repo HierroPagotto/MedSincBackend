@@ -27,6 +27,7 @@ def list_users(current_user):
 def delete_user(current_user, user_id):
     from app.models.user import User
     from app.models.notification import Notification
+    from app.models.notification_preference import NotificationPreference
     from app.models.opportunity_application import OpportunityApplication
     from app.models.financial_goal import FinancialGoal
     from app.models.doctor_specialty import DoctorSpecialty, DoctorPracticeArea
@@ -41,7 +42,10 @@ def delete_user(current_user, user_id):
             400,
         )
 
+    linked_user_id = doctor.user_id
+
     try:
+        # Vínculos do perfil (doctors.id)
         db.session.query(OpportunityApplication).filter_by(doctor_id=user_id).delete(
             synchronize_session=False
         )
@@ -55,17 +59,25 @@ def delete_user(current_user, user_id):
             synchronize_session=False
         )
 
-        shifts = db.session.query(Shift).filter_by(doctor_id=user_id).all()
-        for shift in shifts:
-            payments = db.session.query(Payment).filter_by(shift_id=shift.id).all()
-            for payment in payments:
-                db.session.delete(payment)
-            db.session.delete(shift)
+        shift_ids = [
+            row.id
+            for row in db.session.query(Shift.id).filter_by(doctor_id=user_id).all()
+        ]
+        if shift_ids:
+            db.session.query(Payment).filter(Payment.shift_id.in_(shift_ids)).delete(
+                synchronize_session=False
+            )
+            db.session.query(Shift).filter(Shift.id.in_(shift_ids)).delete(
+                synchronize_session=False
+            )
 
-        linked_user_id = doctor.user_id
         db.session.delete(doctor)
+        db.session.flush()
 
         if linked_user_id:
+            db.session.query(NotificationPreference).filter_by(
+                user_id=linked_user_id
+            ).delete(synchronize_session=False)
             db.session.query(Notification).filter_by(user_id=linked_user_id).delete(
                 synchronize_session=False
             )
@@ -74,12 +86,14 @@ def delete_user(current_user, user_id):
                 db.session.delete(user)
 
         db.session.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.session.rollback()
+        detail = str(getattr(exc, "orig", None) or exc)
         return (
             jsonify(
                 {
-                    "message": "Não foi possível deletar: há registros vinculados a este usuário"
+                    "message": "Não foi possível deletar: há registros vinculados a este usuário",
+                    "detail": detail,
                 }
             ),
             409,
