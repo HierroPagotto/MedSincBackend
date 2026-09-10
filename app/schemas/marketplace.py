@@ -11,6 +11,7 @@ class OpportunityCreate:
     specialty: str
     value: float
     payment_date: date
+    required_profession: str = "doctor"
     city: Optional[str] = None
     slots_total: int = 1
     notes: Optional[str] = None
@@ -26,6 +27,7 @@ class OpportunityUpdate:
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     specialty: Optional[str] = None
+    required_profession: Optional[str] = None
     value: Optional[float] = None
     payment_date: Optional[date] = None
     city: Optional[str] = None

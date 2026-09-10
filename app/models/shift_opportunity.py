@@ -37,6 +37,13 @@ class ShiftOpportunity(db.Model):
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)
     specialty = Column(String(100), nullable=False, index=True)
+    required_profession = Column(
+        String(40),
+        nullable=False,
+        default="doctor",
+        index=True,
+        server_default="doctor",
+    )
     value = Column(Numeric(10, 2), nullable=False)
     payment_date = Column(Date, nullable=True)
     requires_acls = Column(Boolean, nullable=False, default=False, server_default="0")
@@ -81,6 +88,7 @@ class ShiftOpportunity(db.Model):
                 else self.end_time
             ),
             "specialty": self.specialty,
+            "required_profession": self.required_profession or "doctor",
             "value": (
                 float(self.value) if isinstance(self.value, Decimal) else self.value
             ),

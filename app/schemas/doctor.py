@@ -1,6 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
-from datetime import datetime
+
 
 @dataclass
 class DoctorCreate:
@@ -8,7 +8,11 @@ class DoctorCreate:
     email: str
     password: str
     main_specialty: str
+    profession: str = "doctor"
     photo_url: Optional[str] = None
+    council_type: Optional[str] = None
+    council_number: Optional[str] = None
+    council_state: Optional[str] = None
     crm: Optional[str] = None
     crm_state: Optional[str] = None
     graduation_year: Optional[int] = None
@@ -34,6 +38,9 @@ class DoctorCreate:
     has_ehr_experience: Optional[bool] = None
     provides_invoice: Optional[bool] = None
     languages: Optional[str] = None
+    specialties: Optional[List[str]] = None
+    practice_areas: Optional[List[str]] = None
+
 
 @dataclass
 class DoctorUpdate:
@@ -41,6 +48,10 @@ class DoctorUpdate:
     password: Optional[str] = None
     photo_url: Optional[str] = None
     email: Optional[str] = None
+    profession: Optional[str] = None
+    council_type: Optional[str] = None
+    council_number: Optional[str] = None
+    council_state: Optional[str] = None
     crm: Optional[str] = None
     crm_state: Optional[str] = None
     graduation_year: Optional[int] = None
@@ -67,3 +78,5 @@ class DoctorUpdate:
     has_ehr_experience: Optional[bool] = None
     provides_invoice: Optional[bool] = None
     languages: Optional[str] = None
+    specialties: Optional[List[str]] = field(default=None)
+    practice_areas: Optional[List[str]] = field(default=None)

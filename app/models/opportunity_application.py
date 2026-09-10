@@ -76,9 +76,24 @@ class OpportunityApplication(db.Model):
             result["doctor"] = {
                 "id": self.doctor.id,
                 "name": self.doctor.name,
+                "profession": getattr(self.doctor, "profession", None) or "doctor",
+                "council_type": getattr(self.doctor, "council_type", None),
+                "council_number": getattr(self.doctor, "council_number", None)
+                or self.doctor.crm,
+                "council_state": getattr(self.doctor, "council_state", None)
+                or self.doctor.crm_state,
                 "crm": self.doctor.crm,
                 "crm_state": self.doctor.crm_state,
                 "main_specialty": self.doctor.main_specialty,
+                "specialties": [
+                    row.specialty
+                    for row in (getattr(self.doctor, "specialty_rows", None) or [])
+                ]
+                or ([self.doctor.main_specialty] if self.doctor.main_specialty else []),
+                "practice_areas": [
+                    row.area
+                    for row in (getattr(self.doctor, "practice_area_rows", None) or [])
+                ],
                 "city": self.doctor.city,
                 "state": self.doctor.state,
                 "photo_url": self.doctor.photo_url,

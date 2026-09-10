@@ -3,6 +3,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Foreign
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import db
+from app.utils.professions import PROFESSION_DOCTOR, COUNCIL_CRM
 
 
 class Doctor(db.Model):
@@ -17,6 +18,14 @@ class Doctor(db.Model):
     photo_url = Column(String(255))
     email = Column(String(100), unique=True, nullable=False)
     password = Column(String(255), nullable=False)
+
+    profession = Column(
+        String(40), nullable=False, default=PROFESSION_DOCTOR, index=True
+    )
+    council_type = Column(String(20), nullable=True)
+    council_number = Column(String(20), nullable=True)
+    council_state = Column(String(2), nullable=True)
+
     crm = Column(String(20), unique=True, nullable=True)
     crm_state = Column(String(2), nullable=True)
     graduation_year = Column(Integer, nullable=True)
@@ -59,6 +68,18 @@ class Doctor(db.Model):
 
     shifts = relationship("Shift", back_populates="doctor")
     user = relationship("User", back_populates="doctor")
+    specialty_rows = relationship(
+        "DoctorSpecialty",
+        back_populates="doctor",
+        cascade="all, delete-orphan",
+        lazy="joined",
+    )
+    practice_area_rows = relationship(
+        "DoctorPracticeArea",
+        back_populates="doctor",
+        cascade="all, delete-orphan",
+        lazy="joined",
+    )
 
     def to_dict(self, include_shifts=False, include_shifts_count=False):
         result = {}
@@ -75,6 +96,23 @@ class Doctor(db.Model):
                 result[column.name] = str(value) if value is not None else None
 
         result.pop("password", None)
+
+        specialties = [row.specialty for row in (self.specialty_rows or [])]
+        practice_areas = [row.area for row in (self.practice_area_rows or [])]
+        if not specialties and self.main_specialty:
+            specialties = [self.main_specialty]
+        result["specialties"] = specialties
+        result["practice_areas"] = practice_areas
+
+        # Compat: se council vazio mas CRM legado preenchido
+        if not result.get("council_number") and result.get("crm"):
+            result["council_type"] = result.get("council_type") or COUNCIL_CRM
+            result["council_number"] = result.get("crm")
+            result["council_state"] = result.get("council_state") or result.get(
+                "crm_state"
+            )
+        if not result.get("profession"):
+            result["profession"] = PROFESSION_DOCTOR
 
         if include_shifts and self.shifts:
             result["shifts"] = [shift.to_dict() for shift in self.shifts]

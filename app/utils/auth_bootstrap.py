@@ -124,6 +124,8 @@ def ensure_auth_schema() -> None:
         User,
         HospitalStaff,
         Doctor,
+        DoctorSpecialty,
+        DoctorPracticeArea,
         Hospital,
         Shift,
         Payment,
@@ -178,6 +180,38 @@ def ensure_auth_schema() -> None:
             "requires_pals BOOLEAN NOT NULL DEFAULT 0",
         )
 
+        _add_column_if_missing(
+            "doctors",
+            "profession",
+            "profession VARCHAR(40) NOT NULL DEFAULT 'doctor'",
+        )
+        _add_column_if_missing(
+            "doctors", "council_type", "council_type VARCHAR(20) NULL"
+        )
+        _add_column_if_missing(
+            "doctors", "council_number", "council_number VARCHAR(20) NULL"
+        )
+        _add_column_if_missing(
+            "doctors", "council_state", "council_state VARCHAR(2) NULL"
+        )
+        _add_column_if_missing(
+            "shift_opportunities",
+            "required_profession",
+            "required_profession VARCHAR(40) NOT NULL DEFAULT 'doctor'",
+        )
+
+        _run_ddl_ignore_exists(
+            "CREATE INDEX ix_doctors_profession ON doctors (profession)"
+        )
+        _run_ddl_ignore_exists(
+            "CREATE INDEX ix_shift_opportunities_required_profession "
+            "ON shift_opportunities (required_profession)"
+        )
+        _run_ddl_ignore_exists(
+            "CREATE UNIQUE INDEX uq_doctor_council "
+            "ON doctors (council_type, council_number, council_state)"
+        )
+
         _run_ddl_ignore_exists(
             "CREATE UNIQUE INDEX ix_doctors_user_id ON doctors (user_id)"
         )
@@ -194,6 +228,9 @@ def ensure_auth_schema() -> None:
         )
 
         backfill_doctor_users()
+        backfill_profession_and_council()
+        backfill_opportunity_required_profession()
+        backfill_doctor_specialties_from_main()
     finally:
         if locked:
             _release_bootstrap_lock()
@@ -225,3 +262,76 @@ def backfill_doctor_users() -> None:
         except Exception:
             db.session.rollback()
             return
+
+
+def backfill_profession_and_council() -> None:
+    """Profissão médico + conselho CRM a partir do CRM legado."""
+    from app.utils.professions import COUNCIL_CRM, PROFESSION_DOCTOR
+
+    doctors = db.session.query(Doctor).all()
+    changed = False
+    for doctor in doctors:
+        if not getattr(doctor, "profession", None):
+            doctor.profession = PROFESSION_DOCTOR
+            changed = True
+        if not doctor.council_type and (doctor.crm or doctor.council_number):
+            doctor.council_type = COUNCIL_CRM
+            changed = True
+        if not doctor.council_number and doctor.crm:
+            doctor.council_number = doctor.crm
+            changed = True
+        if not doctor.council_state and doctor.crm_state:
+            doctor.council_state = doctor.crm_state
+            changed = True
+    if changed:
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+
+def backfill_opportunity_required_profession() -> None:
+    from app.models.shift_opportunity import ShiftOpportunity
+    from app.utils.professions import PROFESSION_DOCTOR
+
+    rows = (
+        db.session.query(ShiftOpportunity)
+        .filter(
+            (ShiftOpportunity.required_profession.is_(None))
+            | (ShiftOpportunity.required_profession == "")
+        )
+        .all()
+    )
+    for row in rows:
+        row.required_profession = PROFESSION_DOCTOR
+    if rows:
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+
+def backfill_doctor_specialties_from_main() -> None:
+    from app.models.doctor_specialty import DoctorSpecialty
+
+    doctors = db.session.query(Doctor).all()
+    changed = False
+    for doctor in doctors:
+        if not doctor.main_specialty:
+            continue
+        has_rows = (
+            db.session.query(DoctorSpecialty.id)
+            .filter(DoctorSpecialty.doctor_id == doctor.id)
+            .first()
+        )
+        if has_rows:
+            continue
+        db.session.add(
+            DoctorSpecialty(doctor_id=doctor.id, specialty=doctor.main_specialty)
+        )
+        changed = True
+    if changed:
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()

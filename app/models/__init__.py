@@ -1,4 +1,5 @@
 from .doctor import Doctor
+from .doctor_specialty import DoctorSpecialty, DoctorPracticeArea
 from .hospital import Hospital
 from .shift import Shift
 from .payment import Payment
@@ -12,6 +13,8 @@ from .notification_preference import NotificationPreference
 
 __all__ = [
     "Doctor",
+    "DoctorSpecialty",
+    "DoctorPracticeArea",
     "Hospital",
     "Shift",
     "Payment",

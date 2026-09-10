@@ -31,6 +31,7 @@ class OpportunityRepository:
             start_time=data.start_time,
             end_time=data.end_time,
             specialty=data.specialty,
+            required_profession=data.required_profession or "doctor",
             value=data.value,
             payment_date=data.payment_date,
             requires_acls=data.requires_acls,

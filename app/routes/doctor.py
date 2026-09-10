@@ -15,11 +15,37 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
+@doctor_bp.route("/catalogs", methods=["GET"])
+def profession_catalogs():
+    from app.utils.professions import (
+        ALLOWED_PROFESSIONS,
+        PRACTICE_AREAS,
+        PROFESSION_DEFAULT_COUNCIL,
+        PROFESSION_LABELS_PT,
+        SPECIALTIES_BY_PROFESSION,
+    )
+
+    return jsonify(
+        {
+            "professions": [
+                {
+                    "id": p,
+                    "label": PROFESSION_LABELS_PT[p],
+                    "council_type": PROFESSION_DEFAULT_COUNCIL[p],
+                    "specialties": SPECIALTIES_BY_PROFESSION.get(p, []),
+                }
+                for p in sorted(ALLOWED_PROFESSIONS)
+            ],
+            "practice_areas": PRACTICE_AREAS,
+        }
+    )
+
+
 @doctor_bp.route("/info/<int:doctor_id>", methods=["GET"])
 def get_doctor(doctor_id):
     doctor = doctor_repository.get_by_id(db.session, doctor_id)
     if not doctor:
-        return jsonify({"message": "Médico não encontrado"}), 404
+        return jsonify({"message": "Profissional não encontrado"}), 404
     return jsonify(doctor.to_dict(include_shifts_count=True))
 
 
@@ -29,6 +55,7 @@ def create_doctor():
     from sqlalchemy.exc import IntegrityError
 
     from app.repositories.user_repository import UserRepository
+    from app.utils.professions import validate_profession_payload, default_council_for
 
     data = request.get_json() or {}
     if data.get("email"):
@@ -42,7 +69,25 @@ def create_doctor():
             400,
         )
 
-    for key in ("crm", "crm_state", "city", "phone", "state"):
+    error, profession = validate_profession_payload(
+        data.get("profession") or "doctor",
+        require_profession=True,
+    )
+    if error:
+        return jsonify({"message": error}), 400
+    data["profession"] = profession
+    if not data.get("council_type"):
+        data["council_type"] = default_council_for(profession)
+
+    for key in (
+        "crm",
+        "crm_state",
+        "city",
+        "phone",
+        "state",
+        "council_number",
+        "council_state",
+    ):
         if key in data and (data[key] is None or str(data[key]).strip() == ""):
             data[key] = None
 
@@ -82,8 +127,24 @@ def get_current_doctor(current_user):
 @doctor_bp.route("/me", methods=["PUT"])
 @token_required
 def update_doctor(current_user):
-    data = request.get_json()
-    update_data = DoctorUpdate(**data)
+    from dataclasses import fields
+
+    from app.utils.professions import validate_profession_payload
+
+    data = request.get_json() or {}
+    if data.get("profession") is not None:
+        error, profession = validate_profession_payload(
+            data.get("profession"),
+            council_type=data.get("council_type"),
+            require_profession=True,
+        )
+        if error:
+            return jsonify({"message": error}), 400
+        data["profession"] = profession
+
+    allowed = {f.name for f in fields(DoctorUpdate)}
+    payload = {k: v for k, v in data.items() if k in allowed}
+    update_data = DoctorUpdate(**payload)
 
     doctor_repository.update(db.session, current_user, update_data)
     return {"message": "Atualizado com sucesso!"}

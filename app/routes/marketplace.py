@@ -31,6 +31,12 @@ def _parse_bool(value) -> bool:
 
 
 def _parse_opportunity_payload(data: dict, *, partial: bool = False):
+    from app.utils.professions import (
+        ALLOWED_PROFESSIONS,
+        PROFESSION_DOCTOR,
+        normalize_profession,
+    )
+
     try:
         if partial:
             payload = {}
@@ -42,6 +48,19 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
                 payload["end_time"] = parse_time(data.get("end_time"))
             if "specialty" in data:
                 payload["specialty"] = data.get("specialty")
+            if "required_profession" in data:
+                profession = normalize_profession(data.get("required_profession"))
+                if not profession:
+                    return None, (
+                        jsonify(
+                            {
+                                "message": "required_profession inválido",
+                                "allowed": sorted(ALLOWED_PROFESSIONS),
+                            }
+                        ),
+                        400,
+                    )
+                payload["required_profession"] = profession
             if "value" in data:
                 payload["value"] = float(data.get("value"))
             if "payment_date" in data:
@@ -69,11 +88,24 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
             "specialty",
             "value",
             "payment_date",
+            "required_profession",
         ]
         missing = [f for f in required if data.get(f) in (None, "")]
         if missing:
             return None, (
                 jsonify({"message": "Dados incompletos", "missing": missing}),
+                400,
+            )
+
+        required_profession = normalize_profession(data.get("required_profession"))
+        if not required_profession:
+            return None, (
+                jsonify(
+                    {
+                        "message": "required_profession inválido",
+                        "allowed": sorted(ALLOWED_PROFESSIONS),
+                    }
+                ),
                 400,
             )
 
@@ -84,6 +116,7 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
             specialty=data.get("specialty"),
             value=float(data.get("value")),
             payment_date=parse_date(data.get("payment_date")),
+            required_profession=required_profession or PROFESSION_DOCTOR,
             city=data.get("city"),
             slots_total=int(data.get("slots_total") or 1),
             notes=data.get("notes"),
