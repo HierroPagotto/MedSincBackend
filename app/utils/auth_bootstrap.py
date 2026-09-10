@@ -265,13 +265,21 @@ def backfill_doctor_users() -> None:
 
 
 def backfill_profession_and_council() -> None:
-    """Profissão médico + conselho CRM a partir do CRM legado."""
-    from app.utils.professions import COUNCIL_CRM, PROFESSION_DOCTOR
+    """Profissão médico + conselho CRM a partir do CRM legado; unifica técnicos legados."""
+    from app.utils.professions import (
+        COUNCIL_CRM,
+        PROFESSION_DOCTOR,
+        normalize_profession,
+    )
 
     doctors = db.session.query(Doctor).all()
     changed = False
     for doctor in doctors:
-        if not getattr(doctor, "profession", None):
+        normalized = normalize_profession(getattr(doctor, "profession", None))
+        if normalized and doctor.profession != normalized:
+            doctor.profession = normalized
+            changed = True
+        elif not getattr(doctor, "profession", None):
             doctor.profession = PROFESSION_DOCTOR
             changed = True
         if not doctor.council_type and (doctor.crm or doctor.council_number):
@@ -292,19 +300,16 @@ def backfill_profession_and_council() -> None:
 
 def backfill_opportunity_required_profession() -> None:
     from app.models.shift_opportunity import ShiftOpportunity
-    from app.utils.professions import PROFESSION_DOCTOR
+    from app.utils.professions import PROFESSION_DOCTOR, normalize_profession
 
-    rows = (
-        db.session.query(ShiftOpportunity)
-        .filter(
-            (ShiftOpportunity.required_profession.is_(None))
-            | (ShiftOpportunity.required_profession == "")
-        )
-        .all()
-    )
+    rows = db.session.query(ShiftOpportunity).all()
+    changed = False
     for row in rows:
-        row.required_profession = PROFESSION_DOCTOR
-    if rows:
+        normalized = normalize_profession(row.required_profession) or PROFESSION_DOCTOR
+        if not row.required_profession or row.required_profession != normalized:
+            row.required_profession = normalized
+            changed = True
+    if changed:
         try:
             db.session.commit()
         except Exception:

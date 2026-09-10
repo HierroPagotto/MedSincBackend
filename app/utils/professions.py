@@ -4,15 +4,18 @@ from __future__ import annotations
 
 PROFESSION_DOCTOR = "doctor"
 PROFESSION_NURSE = "nurse"
-PROFESSION_NURSING_TECHNICIAN = "nursing_technician"
-PROFESSION_ORTHOPEDIC_TECHNICIAN = "orthopedic_technician"
+PROFESSION_TECHNICIAN = "technician"
+
+_LEGACY_PROFESSION_MAP = {
+    "nursing_technician": PROFESSION_TECHNICIAN,
+    "orthopedic_technician": PROFESSION_TECHNICIAN,
+}
 
 ALLOWED_PROFESSIONS = frozenset(
     {
         PROFESSION_DOCTOR,
         PROFESSION_NURSE,
-        PROFESSION_NURSING_TECHNICIAN,
-        PROFESSION_ORTHOPEDIC_TECHNICIAN,
+        PROFESSION_TECHNICIAN,
     }
 )
 
@@ -23,15 +26,19 @@ COUNCIL_CREFITO = "CREFITO"
 PROFESSION_DEFAULT_COUNCIL = {
     PROFESSION_DOCTOR: COUNCIL_CRM,
     PROFESSION_NURSE: COUNCIL_COREN,
-    PROFESSION_NURSING_TECHNICIAN: COUNCIL_COREN,
-    PROFESSION_ORTHOPEDIC_TECHNICIAN: COUNCIL_CREFITO,
+    PROFESSION_TECHNICIAN: COUNCIL_COREN,
+}
+
+PROFESSION_ALLOWED_COUNCILS = {
+    PROFESSION_DOCTOR: frozenset({COUNCIL_CRM}),
+    PROFESSION_NURSE: frozenset({COUNCIL_COREN}),
+    PROFESSION_TECHNICIAN: frozenset({COUNCIL_COREN, COUNCIL_CREFITO}),
 }
 
 PROFESSION_LABELS_PT = {
     PROFESSION_DOCTOR: "Médico",
     PROFESSION_NURSE: "Enfermeiro",
-    PROFESSION_NURSING_TECHNICIAN: "Técnico de enfermagem",
-    PROFESSION_ORTHOPEDIC_TECHNICIAN: "Técnico em ortopedia",
+    PROFESSION_TECHNICIAN: "Técnico",
 }
 
 SPECIALTIES_BY_PROFESSION = {
@@ -66,20 +73,17 @@ SPECIALTIES_BY_PROFESSION = {
         "Obstetrícia",
         "Home care",
     ],
-    PROFESSION_NURSING_TECHNICIAN: [
-        "Enfermagem geral",
+    PROFESSION_TECHNICIAN: [
+        "Técnico de enfermagem",
+        "Técnico em ortopedia",
+        "Técnico em radiologia",
+        "Técnico em laboratório",
         "UTI",
         "Pronto-socorro",
         "Centro cirúrgico",
         "Enfermaria",
-        "Pediatria",
         "Ambulatório",
-    ],
-    PROFESSION_ORTHOPEDIC_TECHNICIAN: [
         "Imobilizações ortopédicas",
-        "Pronto-socorro",
-        "Ambulatório ortopédico",
-        "Centro cirúrgico",
     ],
 }
 
@@ -102,6 +106,7 @@ def normalize_profession(value: str | None) -> str | None:
     if value is None:
         return None
     profession = str(value).strip().lower()
+    profession = _LEGACY_PROFESSION_MAP.get(profession, profession)
     if profession not in ALLOWED_PROFESSIONS:
         return None
     return profession
@@ -110,7 +115,15 @@ def normalize_profession(value: str | None) -> str | None:
 def default_council_for(profession: str | None) -> str | None:
     if not profession:
         return None
-    return PROFESSION_DEFAULT_COUNCIL.get(profession)
+    normalized = normalize_profession(profession) or profession
+    return PROFESSION_DEFAULT_COUNCIL.get(normalized)
+
+
+def allowed_councils_for(profession: str | None) -> frozenset[str]:
+    normalized = normalize_profession(profession)
+    if not normalized:
+        return frozenset()
+    return PROFESSION_ALLOWED_COUNCILS.get(normalized, frozenset())
 
 
 def validate_profession_payload(
@@ -133,10 +146,10 @@ def validate_profession_payload(
         )
 
     if council_type is not None and str(council_type).strip():
-        expected = PROFESSION_DEFAULT_COUNCIL[normalized]
-        if str(council_type).strip().upper() != expected:
+        allowed = allowed_councils_for(normalized)
+        if str(council_type).strip().upper() not in allowed:
             return (
-                f"Conselho inválido para esta profissão. Esperado: {expected}",
+                f"Conselho inválido para esta profissão. Use: {', '.join(sorted(allowed))}",
                 None,
             )
 
