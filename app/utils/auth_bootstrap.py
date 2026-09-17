@@ -129,6 +129,7 @@ def ensure_auth_schema() -> None:
         Hospital,
         Shift,
         ShiftExpense,
+        PersonalExpense,
         Payment,
         FinancialGoal,
         ShiftOpportunity,
@@ -143,7 +144,6 @@ def ensure_auth_schema() -> None:
 
         _add_column_if_missing("doctors", "user_id", "user_id INT NULL")
 
-        # Allow doctor signup without full profile (CRM, city, etc.)
         _make_doctor_signup_columns_nullable()
 
         _add_column_if_missing("hospitals", "city", "city VARCHAR(100) NULL")

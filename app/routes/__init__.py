@@ -8,3 +8,4 @@ from .admin import admin_bp
 from .hospital_portal import hospital_portal_bp
 from .marketplace import marketplace_bp
 from .notifications import notifications_bp, jobs_bp
+from .expenses import expenses_bp

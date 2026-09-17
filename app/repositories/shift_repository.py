@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from app.models.shift import Shift
 from app.models.shift_expense import ShiftExpense
+from app.models.personal_expense import PersonalExpense
 from app.schemas.shift import ShiftCreate
 from sqlalchemy.orm import joinedload
 from datetime import datetime, timedelta
@@ -67,7 +68,7 @@ class ShiftRepository:
         )
 
     def _sum_expenses_for_month(self, db: Session, doctor_id: int, year: int, month: int) -> float:
-        total = (
+        shift_total = (
             db.query(func.coalesce(func.sum(ShiftExpense.amount), 0))
             .filter(
                 ShiftExpense.doctor_id == doctor_id,
@@ -76,7 +77,16 @@ class ShiftRepository:
             )
             .scalar()
         )
-        return float(total)
+        personal_total = (
+            db.query(func.coalesce(func.sum(PersonalExpense.amount), 0))
+            .filter(
+                PersonalExpense.doctor_id == doctor_id,
+                extract("month", PersonalExpense.expense_date) == month,
+                extract("year", PersonalExpense.expense_date) == year,
+            )
+            .scalar()
+        )
+        return float(shift_total or 0) + float(personal_total or 0)
     
     def get_dashboard_stats(self, db: Session, doctor_id: int) -> dict:
         brazil_tz = pytz.timezone('America/Sao_Paulo')
@@ -298,17 +308,31 @@ class ShiftRepository:
             extract("month", ShiftExpense.expense_date)
         ).all()
 
+        personal_by_month = db.query(
+            extract("month", PersonalExpense.expense_date).label("month"),
+            func.coalesce(func.sum(PersonalExpense.amount), 0).label("expenses_total"),
+        ).filter(
+            PersonalExpense.doctor_id == doctor_id,
+            extract("year", PersonalExpense.expense_date) == year,
+        ).group_by(
+            extract("month", PersonalExpense.expense_date)
+        ).all()
+
         monthly_data = []
         for month in range(1, 13):
             completed = next((r for r in completed_shifts if r.month == month), None)
             scheduled = next((r for r in scheduled_shifts if r.month == month), None)
             expense_row = next((r for r in expenses_by_month if r.month == month), None)
+            personal_row = next((r for r in personal_by_month if r.month == month), None)
             
             received = float(completed.received) if completed else 0
             completed_count = completed.completed_shifts if completed else 0
             expected = float(scheduled.expected) if scheduled else 0
             scheduled_count = scheduled.scheduled_shifts if scheduled else 0
-            expenses_total = float(expense_row.expenses_total) if expense_row else 0
+            expenses_total = (
+                (float(expense_row.expenses_total) if expense_row else 0)
+                + (float(personal_row.expenses_total) if personal_row else 0)
+            )
             expected_total = expected + received
             
             monthly_data.append({
@@ -361,8 +385,15 @@ class ShiftRepository:
             extract("year", ShiftExpense.expense_date) == year,
         ).scalar()
 
+        total_personal = db.query(
+            func.coalesce(func.sum(PersonalExpense.amount), 0)
+        ).filter(
+            PersonalExpense.doctor_id == doctor_id,
+            extract("year", PersonalExpense.expense_date) == year,
+        ).scalar()
+
         total_expected_f = float(total_expected)
-        total_expenses_f = float(total_expenses)
+        total_expenses_f = float(total_expenses or 0) + float(total_personal or 0)
 
         return {
             'total_received': float(total_received),

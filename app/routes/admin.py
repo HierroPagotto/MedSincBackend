@@ -76,6 +76,12 @@ def delete_user(current_user, user_id):
                 synchronize_session=False
             )
 
+        from app.models.personal_expense import PersonalExpense
+
+        db.session.query(PersonalExpense).filter_by(doctor_id=user_id).delete(
+            synchronize_session=False
+        )
+
         db.session.delete(doctor)
         db.session.flush()
 
