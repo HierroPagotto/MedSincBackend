@@ -130,6 +130,7 @@ def ensure_auth_schema() -> None:
         Shift,
         ShiftExpense,
         PersonalExpense,
+        ExpensePaymentMethod,
         Payment,
         FinancialGoal,
         ShiftOpportunity,
@@ -228,6 +229,41 @@ def ensure_auth_schema() -> None:
             "FOREIGN KEY (opportunity_id) REFERENCES shift_opportunities(id)"
         )
 
+        _add_column_if_missing(
+            "personal_expenses",
+            "recurrence",
+            "recurrence VARCHAR(20) NOT NULL DEFAULT 'none'",
+        )
+        _add_column_if_missing(
+            "personal_expenses",
+            "payment_method_id",
+            "payment_method_id INT NULL",
+        )
+        _add_column_if_missing(
+            "personal_expenses",
+            "recurrence_group_id",
+            "recurrence_group_id VARCHAR(36) NULL",
+        )
+        _add_column_if_missing(
+            "personal_expenses",
+            "is_recurrence_origin",
+            "is_recurrence_origin BOOLEAN NOT NULL DEFAULT 0",
+        )
+        _add_column_if_missing(
+            "personal_expenses",
+            "recurrence_active",
+            "recurrence_active BOOLEAN NOT NULL DEFAULT 1",
+        )
+        _run_ddl_ignore_exists(
+            "CREATE INDEX ix_personal_expenses_payment_method_id "
+            "ON personal_expenses (payment_method_id)"
+        )
+        _run_ddl_ignore_exists(
+            "CREATE INDEX ix_personal_expenses_recurrence_group_id "
+            "ON personal_expenses (recurrence_group_id)"
+        )
+        _seed_system_payment_methods()
+
         backfill_doctor_users()
         backfill_profession_and_council()
         backfill_opportunity_required_profession()
@@ -236,6 +272,36 @@ def ensure_auth_schema() -> None:
         if locked:
             _release_bootstrap_lock()
 
+
+def _seed_system_payment_methods() -> None:
+    from app.models.expense_payment_method import (
+        ExpensePaymentMethod,
+        SYSTEM_PAYMENT_METHODS,
+    )
+
+    for slug, name in SYSTEM_PAYMENT_METHODS:
+        exists = (
+            db.session.query(ExpensePaymentMethod.id)
+            .filter(
+                ExpensePaymentMethod.doctor_id.is_(None),
+                ExpensePaymentMethod.slug == slug,
+            )
+            .first()
+        )
+        if exists:
+            continue
+        db.session.add(
+            ExpensePaymentMethod(
+                doctor_id=None,
+                name=name,
+                slug=slug,
+                is_active=True,
+            )
+        )
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 def backfill_doctor_users() -> None:
     """Cria User para doctors sem user_id, reutilizando o hash de senha atual."""

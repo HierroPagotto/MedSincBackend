@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from app.models.shift import Shift
 from app.models.shift_expense import ShiftExpense
 from app.models.personal_expense import PersonalExpense
+from app.repositories.personal_expense_repository import ensure_recurring_expenses
 from app.schemas.shift import ShiftCreate
 from sqlalchemy.orm import joinedload
 from datetime import datetime, timedelta
@@ -68,6 +69,7 @@ class ShiftRepository:
         )
 
     def _sum_expenses_for_month(self, db: Session, doctor_id: int, year: int, month: int) -> float:
+        ensure_recurring_expenses(db, doctor_id, year)
         shift_total = (
             db.query(func.coalesce(func.sum(ShiftExpense.amount), 0))
             .filter(
@@ -274,6 +276,7 @@ class ShiftRepository:
         }
 
     def get_monthly_financial_data(self, db: Session, doctor_id: int, year: int) -> list:
+        ensure_recurring_expenses(db, doctor_id, year)
         completed_shifts = db.query(
             extract('month', Shift.date).label('month'),
             func.sum(Shift.value).label('received'),
@@ -348,6 +351,7 @@ class ShiftRepository:
         return monthly_data
 
     def get_annual_totals(self, db: Session, doctor_id: int, year: int) -> dict:
+        ensure_recurring_expenses(db, doctor_id, year)
         total_received = db.query(
             func.coalesce(func.sum(Shift.value), 0)
         ).filter(

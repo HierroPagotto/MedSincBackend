@@ -4,6 +4,7 @@ from .hospital import Hospital
 from .shift import Shift
 from .shift_expense import ShiftExpense
 from .personal_expense import PersonalExpense
+from .expense_payment_method import ExpensePaymentMethod
 from .payment import Payment
 from .financial_goal import FinancialGoal
 from .user import User
@@ -21,6 +22,7 @@ __all__ = [
     "Shift",
     "ShiftExpense",
     "PersonalExpense",
+    "ExpensePaymentMethod",
     "Payment",
     "FinancialGoal",
     "User",
