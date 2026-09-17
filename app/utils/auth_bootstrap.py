@@ -128,6 +128,7 @@ def ensure_auth_schema() -> None:
         DoctorPracticeArea,
         Hospital,
         Shift,
+        ShiftExpense,
         Payment,
         FinancialGoal,
         ShiftOpportunity,

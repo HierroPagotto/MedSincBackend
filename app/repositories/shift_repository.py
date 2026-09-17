@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from app.models.shift import Shift
+from app.models.shift_expense import ShiftExpense
 from app.schemas.shift import ShiftCreate
 from sqlalchemy.orm import joinedload
 from datetime import datetime, timedelta
@@ -52,13 +53,30 @@ class ShiftRepository:
     def get_by_doctor(self, db: Session, doctor_id: int):
         return (
             db.query(Shift)
-            .options(joinedload(Shift.hospital)) 
+            .options(joinedload(Shift.hospital), joinedload(Shift.expenses))
             .filter(Shift.doctor_id == doctor_id)
             .all()
         )
 
     def get_by_id(self, db: Session, shift_id: int) -> Shift:
-        return db.query(Shift).filter(Shift.id == shift_id).first()
+        return (
+            db.query(Shift)
+            .options(joinedload(Shift.expenses), joinedload(Shift.hospital))
+            .filter(Shift.id == shift_id)
+            .first()
+        )
+
+    def _sum_expenses_for_month(self, db: Session, doctor_id: int, year: int, month: int) -> float:
+        total = (
+            db.query(func.coalesce(func.sum(ShiftExpense.amount), 0))
+            .filter(
+                ShiftExpense.doctor_id == doctor_id,
+                extract("month", ShiftExpense.expense_date) == month,
+                extract("year", ShiftExpense.expense_date) == year,
+            )
+            .scalar()
+        )
+        return float(total)
     
     def get_dashboard_stats(self, db: Session, doctor_id: int) -> dict:
         brazil_tz = pytz.timezone('America/Sao_Paulo')
@@ -92,6 +110,15 @@ class ShiftRepository:
             Shift.status.in_(["scheduled", "completed", "paid"]),
             Shift.payment_date.isnot(None)
         ).scalar()
+
+        expenses_total = self._sum_expenses_for_month(
+            db, doctor_id, current_year, current_month
+        )
+        previous_expenses_total = self._sum_expenses_for_month(
+            db, doctor_id, prev_year, prev_month
+        )
+        monthly_earnings_f = float(monthly_earnings)
+        previous_month_earnings_f = float(previous_month_earnings)
 
         scheduled_shifts = db.query(
             func.count(Shift.id).label("scheduled_shifts")
@@ -182,8 +209,12 @@ class ShiftRepository:
         previous_avg_hourly_rate = prev_total_value / prev_total_hours if prev_total_hours > 0 else 0
 
         return {
-            "monthly_earnings": float(monthly_earnings),
-            "previous_month_earnings": float(previous_month_earnings),
+            "monthly_earnings": monthly_earnings_f,
+            "previous_month_earnings": previous_month_earnings_f,
+            "expenses_total": expenses_total,
+            "previous_expenses_total": previous_expenses_total,
+            "net": monthly_earnings_f - expenses_total,
+            "previous_net": previous_month_earnings_f - previous_expenses_total,
             "scheduled_shifts": scheduled_shifts,
             "previous_scheduled_shifts": previous_scheduled_shifts,
             "hours_worked": round(hours_worked, 1),
@@ -257,20 +288,35 @@ class ShiftRepository:
             extract('month', Shift.date)
         ).all()
 
+        expenses_by_month = db.query(
+            extract("month", ShiftExpense.expense_date).label("month"),
+            func.coalesce(func.sum(ShiftExpense.amount), 0).label("expenses_total"),
+        ).filter(
+            ShiftExpense.doctor_id == doctor_id,
+            extract("year", ShiftExpense.expense_date) == year,
+        ).group_by(
+            extract("month", ShiftExpense.expense_date)
+        ).all()
+
         monthly_data = []
         for month in range(1, 13):
             completed = next((r for r in completed_shifts if r.month == month), None)
             scheduled = next((r for r in scheduled_shifts if r.month == month), None)
+            expense_row = next((r for r in expenses_by_month if r.month == month), None)
             
             received = float(completed.received) if completed else 0
             completed_count = completed.completed_shifts if completed else 0
             expected = float(scheduled.expected) if scheduled else 0
             scheduled_count = scheduled.scheduled_shifts if scheduled else 0
+            expenses_total = float(expense_row.expenses_total) if expense_row else 0
+            expected_total = expected + received
             
             monthly_data.append({
                 'month': month,
                 'received': received,
-                'expected': expected + received,
+                'expected': expected_total,
+                'expenses_total': expenses_total,
+                'net': expected_total - expenses_total,
                 'shifts': completed_count + scheduled_count,
                 'avg_per_shift': received / completed_count if completed_count > 0 else 0
             })
@@ -308,9 +354,21 @@ class ShiftRepository:
             )
         ).scalar()
 
+        total_expenses = db.query(
+            func.coalesce(func.sum(ShiftExpense.amount), 0)
+        ).filter(
+            ShiftExpense.doctor_id == doctor_id,
+            extract("year", ShiftExpense.expense_date) == year,
+        ).scalar()
+
+        total_expected_f = float(total_expected)
+        total_expenses_f = float(total_expenses)
+
         return {
             'total_received': float(total_received),
-            'total_expected': float(total_expected),
+            'total_expected': total_expected_f,
+            'total_expenses': total_expenses_f,
+            'total_net': total_expected_f - total_expenses_f,
             'total_shifts': total_shifts,
             'avg_per_shift': float(total_received) / total_shifts if total_shifts > 0 else 0
         }
@@ -328,7 +386,10 @@ class ShiftRepository:
         
         if shift.payment:
             db.delete(shift.payment)
-            
+
+        for expense in list(shift.expenses or []):
+            db.delete(expense)
+
         db.delete(shift)
         db.commit()
         return True

@@ -2,6 +2,7 @@ from .doctor import Doctor
 from .doctor_specialty import DoctorSpecialty, DoctorPracticeArea
 from .hospital import Hospital
 from .shift import Shift
+from .shift_expense import ShiftExpense
 from .payment import Payment
 from .financial_goal import FinancialGoal
 from .user import User
@@ -17,6 +18,7 @@ __all__ = [
     "DoctorPracticeArea",
     "Hospital",
     "Shift",
+    "ShiftExpense",
     "Payment",
     "FinancialGoal",
     "User",

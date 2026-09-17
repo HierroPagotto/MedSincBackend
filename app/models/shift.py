@@ -45,6 +45,12 @@ class Shift(db.Model):
     hospital = relationship("Hospital", back_populates="shifts")
     payment = relationship("Payment", back_populates="shift", uselist=False)
     opportunity = relationship("ShiftOpportunity", back_populates="shifts")
+    expenses = relationship(
+        "ShiftExpense",
+        back_populates="shift",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     def to_dict(self):
         result = {}
@@ -59,5 +65,11 @@ class Shift(db.Model):
 
         if self.hospital:
             result["hospital"] = self.hospital.to_dict()
+
+        expenses = list(self.expenses or [])
+        result["expenses"] = [e.to_dict() for e in expenses]
+        expenses_total = sum(float(e.amount) for e in expenses)
+        result["expenses_total"] = expenses_total
+        result["net_value"] = float(self.value) - expenses_total
 
         return result

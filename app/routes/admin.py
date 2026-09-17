@@ -64,6 +64,11 @@ def delete_user(current_user, user_id):
             for row in db.session.query(Shift.id).filter_by(doctor_id=user_id).all()
         ]
         if shift_ids:
+            from app.models.shift_expense import ShiftExpense
+
+            db.session.query(ShiftExpense).filter(
+                ShiftExpense.shift_id.in_(shift_ids)
+            ).delete(synchronize_session=False)
             db.session.query(Payment).filter(Payment.shift_id.in_(shift_ids)).delete(
                 synchronize_session=False
             )
@@ -154,7 +159,12 @@ def delete_hospital(current_user, hospital_id):
                 db.session.delete(user)
 
         shifts = db.session.query(Shift).filter_by(hospital_id=hospital_id).all()
+        from app.models.shift_expense import ShiftExpense
+
         for shift in shifts:
+            db.session.query(ShiftExpense).filter_by(shift_id=shift.id).delete(
+                synchronize_session=False
+            )
             payments = db.session.query(Payment).filter_by(shift_id=shift.id).all()
             for payment in payments:
                 db.session.delete(payment)

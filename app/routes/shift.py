@@ -3,12 +3,18 @@ import pytz
 from flask import Blueprint, request, jsonify
 from app.repositories.shift_repository import ShiftRepository
 from app.repositories.payment_repository import PaymentRepository
+from app.repositories.expense_repository import (
+    ShiftExpenseRepository,
+    parse_expense_amount,
+    validate_category,
+)
 from app.schemas.shift import ShiftCreate, ShiftUpdate
 from app.schemas.payment import PaymentCreate
 from app.database import db
 from app.utils.auth import token_required
 from app.models.financial_goal import FinancialGoal
 from app.models.shift import SOURCE_MARKETPLACE
+from app.models.shift_expense import EXPENSE_CATEGORIES
 from app.utils.schedule import doctor_has_conflicting_shift
 from app.services.notification_service import notification_service
 from sqlalchemy import extract
@@ -16,6 +22,7 @@ from sqlalchemy import extract
 shift_bp = Blueprint("shift", __name__)
 shift_repository = ShiftRepository()
 payment_repository = PaymentRepository()
+expense_repository = ShiftExpenseRepository()
 
 MARKETPLACE_LOCKED_MSG = (
     "Plantões do marketplace não podem ser editados ou excluídos pelo médico. "
@@ -27,6 +34,13 @@ def _is_marketplace_shift(shift) -> bool:
     return getattr(shift, "source", None) == SOURCE_MARKETPLACE or bool(
         getattr(shift, "opportunity_id", None)
     )
+
+
+def _get_owned_shift(current_user, shift_id):
+    shift = shift_repository.get_by_id(db.session, shift_id)
+    if not shift or shift.doctor_id != current_user.id:
+        return None
+    return shift
 
 
 def _notify_conflict_if_any(doctor, shift) -> None:
@@ -244,11 +258,128 @@ def update_shift(current_user, shift_id):
         return jsonify({"message": MARKETPLACE_LOCKED_MSG}), 403
     data = request.get_json()
     update_data = ShiftUpdate(**data)
+    previous_date = shift.date
     shift_repository.update(db.session, shift, update_data)
+    if shift.date != previous_date:
+        expense_repository.sync_dates_for_shift(db.session, shift.id, shift.date)
     _notify_conflict_if_any(current_user, shift)
     return jsonify(
         {"message": "Plantão atualizado com sucesso", "shift": shift.to_dict()}
     )
+
+
+@shift_bp.route("/expense-categories", methods=["GET"])
+@token_required
+def list_expense_categories(current_user):
+    return jsonify(
+        [{"value": key, "label": label} for key, label in EXPENSE_CATEGORIES.items()]
+    )
+
+
+@shift_bp.route("/<int:shift_id>/expenses", methods=["GET"])
+@token_required
+def list_shift_expenses(current_user, shift_id):
+    shift = _get_owned_shift(current_user, shift_id)
+    if not shift:
+        return jsonify({"message": "Plantão não encontrado"}), 404
+    expenses = expense_repository.list_by_shift(db.session, shift_id)
+    total = sum(float(e.amount) for e in expenses)
+    return jsonify(
+        {
+            "expenses": [e.to_dict() for e in expenses],
+            "expenses_total": total,
+            "net_value": float(shift.value) - total,
+        }
+    )
+
+
+@shift_bp.route("/<int:shift_id>/expenses", methods=["POST"])
+@token_required
+def create_shift_expense(current_user, shift_id):
+    shift = _get_owned_shift(current_user, shift_id)
+    if not shift:
+        return jsonify({"message": "Plantão não encontrado"}), 404
+
+    data = request.get_json() or {}
+    category = validate_category(data.get("category"))
+    if not category:
+        return jsonify({"message": "Categoria de gasto inválida"}), 400
+
+    amount = parse_expense_amount(data.get("amount"))
+    if amount is None:
+        return jsonify({"message": "Valor do gasto deve ser maior que zero"}), 400
+
+    description = data.get("description")
+    if description is not None:
+        description = str(description).strip()[:255] or None
+
+    expense = expense_repository.create(
+        db.session,
+        shift_id=shift.id,
+        doctor_id=current_user.id,
+        category=category,
+        amount=amount,
+        description=description,
+        expense_date=shift.date,
+    )
+    return jsonify({"message": "Gasto adicionado", "expense": expense.to_dict()}), 201
+
+
+@shift_bp.route("/<int:shift_id>/expenses/<int:expense_id>", methods=["PUT"])
+@token_required
+def update_shift_expense(current_user, shift_id, expense_id):
+    shift = _get_owned_shift(current_user, shift_id)
+    if not shift:
+        return jsonify({"message": "Plantão não encontrado"}), 404
+
+    expense = expense_repository.get_by_id(db.session, expense_id)
+    if not expense or expense.shift_id != shift.id or expense.doctor_id != current_user.id:
+        return jsonify({"message": "Gasto não encontrado"}), 404
+
+    data = request.get_json() or {}
+    category = None
+    if "category" in data:
+        category = validate_category(data.get("category"))
+        if not category:
+            return jsonify({"message": "Categoria de gasto inválida"}), 400
+
+    amount = None
+    if "amount" in data:
+        amount = parse_expense_amount(data.get("amount"))
+        if amount is None:
+            return jsonify({"message": "Valor do gasto deve ser maior que zero"}), 400
+
+    description = expense.description
+    if "description" in data:
+        raw = data.get("description")
+        description = str(raw).strip()[:255] if raw is not None else None
+        if description == "":
+            description = None
+
+    expense = expense_repository.update(
+        db.session,
+        expense,
+        category=category,
+        amount=amount,
+        description=description,
+        expense_date=shift.date,
+    )
+    return jsonify({"message": "Gasto atualizado", "expense": expense.to_dict()})
+
+
+@shift_bp.route("/<int:shift_id>/expenses/<int:expense_id>", methods=["DELETE"])
+@token_required
+def delete_shift_expense(current_user, shift_id, expense_id):
+    shift = _get_owned_shift(current_user, shift_id)
+    if not shift:
+        return jsonify({"message": "Plantão não encontrado"}), 404
+
+    expense = expense_repository.get_by_id(db.session, expense_id)
+    if not expense or expense.shift_id != shift.id or expense.doctor_id != current_user.id:
+        return jsonify({"message": "Gasto não encontrado"}), 404
+
+    expense_repository.delete(db.session, expense)
+    return jsonify({"message": "Gasto removido"})
 
 
 # --- Metas financeiras ---
