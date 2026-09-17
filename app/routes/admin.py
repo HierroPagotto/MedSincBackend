@@ -36,7 +36,7 @@ def delete_user(current_user, user_id):
     if not doctor:
         return jsonify({"message": "Usuário não encontrado"}), 404
 
-    if current_user.id == user_id:
+    if current_user.id == doctor.id:
         return (
             jsonify({"message": "Você não pode deletar a própria conta por aqui"}),
             400,

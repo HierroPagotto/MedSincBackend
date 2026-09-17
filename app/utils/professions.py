@@ -112,6 +112,15 @@ def normalize_profession(value: str | None) -> str | None:
     return profession
 
 
+def profession_db_aliases(profession: str | None) -> list[str]:
+    """Valores possíveis no DB para a mesma profissão lógica (inclui legados)."""
+    normalized = normalize_profession(profession) or PROFESSION_DOCTOR
+    aliases = [normalized]
+    if normalized == PROFESSION_TECHNICIAN:
+        aliases.extend(["nursing_technician", "orthopedic_technician"])
+    return aliases
+
+
 def default_council_for(profession: str | None) -> str | None:
     if not profession:
         return None

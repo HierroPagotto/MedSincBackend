@@ -88,7 +88,6 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
             "specialty",
             "value",
             "payment_date",
-            "required_profession",
         ]
         missing = [f for f in required if data.get(f) in (None, "")]
         if missing:
@@ -97,17 +96,21 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
                 400,
             )
 
-        required_profession = normalize_profession(data.get("required_profession"))
-        if not required_profession:
-            return None, (
-                jsonify(
-                    {
-                        "message": "required_profession inválido",
-                        "allowed": sorted(ALLOWED_PROFESSIONS),
-                    }
-                ),
-                400,
-            )
+        raw_profession = data.get("required_profession")
+        if raw_profession in (None, ""):
+            required_profession = PROFESSION_DOCTOR
+        else:
+            required_profession = normalize_profession(raw_profession)
+            if not required_profession:
+                return None, (
+                    jsonify(
+                        {
+                            "message": "required_profession inválido",
+                            "allowed": sorted(ALLOWED_PROFESSIONS),
+                        }
+                    ),
+                    400,
+                )
 
         create = OpportunityCreate(
             date=parse_date(data.get("date")),
@@ -116,7 +119,7 @@ def _parse_opportunity_payload(data: dict, *, partial: bool = False):
             specialty=data.get("specialty"),
             value=float(data.get("value")),
             payment_date=parse_date(data.get("payment_date")),
-            required_profession=required_profession or PROFESSION_DOCTOR,
+            required_profession=required_profession,
             city=data.get("city"),
             slots_total=int(data.get("slots_total") or 1),
             notes=data.get("notes"),

@@ -101,15 +101,17 @@ class Doctor(db.Model):
         result["specialties"] = specialties
         result["practice_areas"] = practice_areas
 
-        # Compat: se council vazio mas CRM legado preenchido
         if not result.get("council_number") and result.get("crm"):
             result["council_type"] = result.get("council_type") or "CRM"
             result["council_number"] = result.get("crm")
             result["council_state"] = result.get("council_state") or result.get(
                 "crm_state"
             )
-        if not result.get("profession"):
-            result["profession"] = "doctor"
+        from app.utils.professions import normalize_profession
+
+        result["profession"] = (
+            normalize_profession(result.get("profession")) or "doctor"
+        )
 
         if include_shifts and self.shifts:
             result["shifts"] = [shift.to_dict() for shift in self.shifts]

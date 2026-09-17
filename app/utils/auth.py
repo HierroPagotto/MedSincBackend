@@ -59,7 +59,7 @@ def token_required(f):
 
         user, payload = loaded
         if user.role not in (ROLE_DOCTOR, ROLE_PLATFORM_ADMIN):
-            return jsonify({"message": "Acesso restrito a médicos"}), 403
+            return jsonify({"message": "Acesso restrito a profissionais"}), 403
 
         doctor = None
         doctor_id = payload.get("doctor_id")
@@ -68,7 +68,7 @@ def token_required(f):
         if not doctor:
             doctor = db.session.query(Doctor).filter(Doctor.user_id == user.id).first()
         if not doctor:
-            return jsonify({"message": "Perfil de médico não encontrado"}), 403
+            return jsonify({"message": "Perfil profissional não encontrado"}), 403
 
         return f(doctor, *args, **kwargs)
 

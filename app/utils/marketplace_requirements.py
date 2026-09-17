@@ -11,6 +11,7 @@ from app.utils.professions import (
     PROFESSION_DOCTOR,
     PROFESSION_LABELS_PT,
     normalize_profession,
+    profession_db_aliases,
 )
 
 REQUIREMENT_FIELDS = (
@@ -60,7 +61,12 @@ def apply_requirements_filter(query: Query, doctor: Doctor | None) -> Query:
         return query
 
     profession = _doctor_profession(doctor)
-    query = query.filter(ShiftOpportunity.required_profession == profession)
+    aliases = profession_db_aliases(profession)
+    profession_filters = [ShiftOpportunity.required_profession.in_(aliases)]
+    if profession == PROFESSION_DOCTOR:
+        profession_filters.append(ShiftOpportunity.required_profession.is_(None))
+        profession_filters.append(ShiftOpportunity.required_profession == "")
+    query = query.filter(or_(*profession_filters))
 
     for req_attr, doctor_attr, _ in REQUIREMENT_FIELDS:
         if not getattr(doctor, doctor_attr, False):

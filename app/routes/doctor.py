@@ -71,6 +71,7 @@ def create_doctor():
 
     error, profession = validate_profession_payload(
         data.get("profession") or "doctor",
+        council_type=data.get("council_type"),
         require_profession=True,
     )
     if error:
