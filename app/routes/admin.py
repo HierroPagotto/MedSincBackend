@@ -25,12 +25,9 @@ def list_users(current_user):
 @token_required
 @admin_required
 def delete_user(current_user, user_id):
-    from app.models.user import User
-    from app.models.notification import Notification
-    from app.models.notification_preference import NotificationPreference
-    from app.models.opportunity_application import OpportunityApplication
-    from app.models.financial_goal import FinancialGoal
-    from app.models.doctor_specialty import DoctorSpecialty, DoctorPracticeArea
+    from sqlalchemy.exc import IntegrityError
+
+    from app.services.account_privacy import delete_doctor_account
 
     doctor = doctor_repository.get_by_id(db.session, user_id)
     if not doctor:
@@ -42,80 +39,16 @@ def delete_user(current_user, user_id):
             400,
         )
 
-    linked_user_id = doctor.user_id
-
     try:
-        # Vínculos do perfil (doctors.id)
-        db.session.query(OpportunityApplication).filter_by(doctor_id=user_id).delete(
-            synchronize_session=False
-        )
-        db.session.query(FinancialGoal).filter_by(user_id=user_id).delete(
-            synchronize_session=False
-        )
-        db.session.query(DoctorSpecialty).filter_by(doctor_id=user_id).delete(
-            synchronize_session=False
-        )
-        db.session.query(DoctorPracticeArea).filter_by(doctor_id=user_id).delete(
-            synchronize_session=False
-        )
-
-        shift_ids = [
-            row.id
-            for row in db.session.query(Shift.id).filter_by(doctor_id=user_id).all()
-        ]
-        if shift_ids:
-            from app.models.shift_expense import ShiftExpense
-
-            db.session.query(ShiftExpense).filter(
-                ShiftExpense.shift_id.in_(shift_ids)
-            ).delete(synchronize_session=False)
-            db.session.query(Payment).filter(Payment.shift_id.in_(shift_ids)).delete(
-                synchronize_session=False
-            )
-            db.session.query(Shift).filter(Shift.id.in_(shift_ids)).delete(
-                synchronize_session=False
-            )
-
-        from app.models.personal_expense import PersonalExpense
-
-        db.session.query(PersonalExpense).filter_by(doctor_id=user_id).delete(
-            synchronize_session=False
-        )
-
-        db.session.delete(doctor)
-        db.session.flush()
-
-        if linked_user_id:
-            db.session.query(NotificationPreference).filter_by(
-                user_id=linked_user_id
-            ).delete(synchronize_session=False)
-            db.session.query(Notification).filter_by(user_id=linked_user_id).delete(
-                synchronize_session=False
-            )
-            user = db.session.query(User).filter(User.id == linked_user_id).first()
-            if user:
-                db.session.delete(user)
-
-        db.session.commit()
+        delete_doctor_account(db.session, doctor)
     except IntegrityError as exc:
         db.session.rollback()
-        detail = str(getattr(exc, "orig", None) or exc)
-        return (
-            jsonify(
-                {
-                    "message": "Não foi possível deletar: há registros vinculados a este usuário",
-                    "detail": detail,
-                }
-            ),
-            409,
-        )
+        return jsonify({"message": "Não foi possível excluir", "detail": str(exc)}), 400
     except Exception:
         db.session.rollback()
-        return jsonify({"message": "Erro ao deletar usuário"}), 500
+        return jsonify({"message": "Erro ao excluir usuário"}), 500
 
-    return jsonify(
-        {"message": "Usuário, plantões e pagamentos associados deletados com sucesso"}
-    )
+    return jsonify({"message": "Usuário excluído"})
 
 
 @admin_bp.route("/hospitals", methods=["GET"])

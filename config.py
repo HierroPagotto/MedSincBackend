@@ -6,12 +6,12 @@ load_dotenv()
 
 
 class Config:
-    DEBUG = True
+    DEBUG = os.environ.get("FLASK_DEBUG", "0") == "1"
     SQLALCHEMY_DATABASE_URI = f"mysql+pymysql://{environ.get('DB_USERNAME')}:{environ.get('DB_PASSWORD')}@{environ.get('DB_HOST')}:{environ.get('DB_PORT')}/{environ.get('DB_NAME')}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SECRET_KEY = environ.get("SECRET_KEY")
     ALGORITHM = environ.get("ALGORITHM", "HS256")
-    ACCESS_TOKEN_EXPIRE_MINUTES = int(environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 1440))
+    ACCESS_TOKEN_EXPIRE_MINUTES = int(environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", 720))
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
     MAIL_PORT = int(os.environ.get("MAIL_PORT", 587))
     MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", "true").lower() in ["true", "on", "1"]
@@ -20,3 +20,6 @@ class Config:
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER")
     NOTIFICATIONS_JOB_SECRET = os.environ.get("NOTIFICATIONS_JOB_SECRET", "")
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://medsinc.com.br").rstrip("/")
+    PRIVACY_CONTACT_EMAIL = os.environ.get(
+        "PRIVACY_CONTACT_EMAIL", "privacidade@medsinc.com.br"
+    )

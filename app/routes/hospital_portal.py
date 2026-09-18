@@ -44,6 +44,13 @@ def register_hospital():
             400,
         )
 
+    if not data.get("accepted_terms"):
+        return jsonify(
+            {
+                "message": "É necessário aceitar a Política de Privacidade e os Termos de Uso"
+            }
+        ), 400
+
     email = admin_data["email"].strip().lower()
     if user_repository.get_by_email(db.session, email):
         return jsonify({"message": "Email já cadastrado"}), 400

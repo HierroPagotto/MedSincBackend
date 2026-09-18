@@ -120,3 +120,43 @@ class Doctor(db.Model):
             result["shifts_count"] = len(self.shifts) if self.shifts else 0
 
         return result
+
+    def to_public_dict(self, include_shifts_count=False):
+        """Dados mínimos para perfil público (minimização LGPD)."""
+        from app.utils.professions import normalize_profession
+
+        specialties = [row.specialty for row in (self.specialty_rows or [])]
+        practice_areas = [row.area for row in (self.practice_area_rows or [])]
+        if not specialties and self.main_specialty:
+            specialties = [self.main_specialty]
+
+        data = {
+            "id": self.id,
+            "name": self.name,
+            "photo_url": self.photo_url,
+            "profession": normalize_profession(self.profession) or "doctor",
+            "main_specialty": self.main_specialty,
+            "specialties": specialties,
+            "practice_areas": practice_areas,
+            "city": self.city,
+            "state": self.state,
+            "graduation_year": self.graduation_year,
+            "years_of_experience": self.years_of_experience,
+            "acls": bool(self.acls),
+            "bls": bool(self.bls),
+            "atls": bool(self.atls),
+            "pals": bool(self.pals),
+            "other_certifications": self.other_certifications,
+            "procedures": self.procedures,
+            "languages": self.languages,
+            "provides_invoice": bool(self.provides_invoice),
+            "council_type": self.council_type
+            or ("CRM" if self.crm else None),
+            "council_state": self.council_state or self.crm_state,
+            "council_number": self.council_number or self.crm,
+            "crm": self.crm,
+            "crm_state": self.crm_state,
+        }
+        if include_shifts_count:
+            data["shifts_count"] = len(self.shifts) if self.shifts else 0
+        return data

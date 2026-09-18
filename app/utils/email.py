@@ -5,6 +5,17 @@ from email.mime.multipart import MIMEMultipart
 from config import Config
 
 
+def _mask_email(email: str) -> str:
+    if not email or "@" not in email:
+        return "***"
+    local, _, domain = email.partition("@")
+    if len(local) <= 2:
+        masked_local = "*" * len(local)
+    else:
+        masked_local = local[0] + "***"
+    return f"{masked_local}@{domain}"
+
+
 def send_email(to_email: str, subject: str, body: str) -> bool:
     if not to_email:
         return False
@@ -24,7 +35,7 @@ def send_email(to_email: str, subject: str, body: str) -> bool:
         server.quit()
         return True
     except Exception as e:
-        print(f"Erro ao enviar email para {to_email}: {e}")
+        print(f"Erro ao enviar email para {_mask_email(to_email)}: {e}")
         return False
 
 

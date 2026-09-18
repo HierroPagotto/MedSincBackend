@@ -24,9 +24,9 @@ def _algorithm() -> str:
 
 def _expire_minutes() -> int:
     try:
-        return int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+        return int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "720"))
     except ValueError:
-        return 1440
+        return 720
 
 
 def create_access_token(

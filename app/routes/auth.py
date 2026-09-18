@@ -157,6 +157,71 @@ def auth_me():
     return jsonify({"message": "Tipo de usuário não suportado"}), 403
 
 
+@auth_bp.route("/auth/me/export", methods=["GET"])
+def export_my_data():
+    from app.services.account_privacy import export_doctor_data
+
+    loaded, error = _load_user_from_token()
+    if error:
+        return error
+
+    user, _payload = loaded
+    if user.role not in (ROLE_DOCTOR, ROLE_PLATFORM_ADMIN):
+        return jsonify({"message": "Exportação disponível apenas para profissionais"}), 403
+
+    doctor = doctor_repository.get_by_user_id(db.session, user.id)
+    if not doctor:
+        return jsonify({"message": "Perfil de médico não encontrado"}), 404
+
+    payload = export_doctor_data(db.session, doctor)
+    return jsonify(payload)
+
+
+@auth_bp.route("/auth/me", methods=["DELETE"])
+def delete_my_account():
+    from sqlalchemy.exc import IntegrityError
+
+    from app.services.account_privacy import delete_doctor_account
+
+    loaded, error = _load_user_from_token()
+    if error:
+        return error
+
+    user, _payload = loaded
+    if user.role not in (ROLE_DOCTOR, ROLE_PLATFORM_ADMIN):
+        return jsonify({"message": "Exclusão self-service disponível para profissionais"}), 403
+
+    data = request.get_json() or {}
+    confirm_email = str(data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not confirm_email or not password:
+        return jsonify({"message": "Informe e-mail e senha para confirmar a exclusão"}), 400
+
+    if confirm_email != (user.email or "").strip().lower():
+        return jsonify({"message": "E-mail de confirmação não confere"}), 400
+
+    if not verify_password(password, user.password):
+        doctor = doctor_repository.get_by_user_id(db.session, user.id)
+        if not doctor or not verify_password(password, doctor.password):
+            return jsonify({"message": "Senha incorreta"}), 401
+
+    doctor = doctor_repository.get_by_user_id(db.session, user.id)
+    if not doctor:
+        return jsonify({"message": "Perfil de médico não encontrado"}), 404
+
+    try:
+        delete_doctor_account(db.session, doctor)
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"message": "Não foi possível excluir a conta"}), 400
+    except Exception:
+        db.session.rollback()
+        return jsonify({"message": "Erro ao excluir conta"}), 500
+
+    return jsonify({"message": "Conta excluída com sucesso"})
+
+
 @auth_bp.route("/password-reset/request", methods=["POST"])
 def request_password_reset():
     data = request.get_json() or {}

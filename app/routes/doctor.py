@@ -46,7 +46,7 @@ def get_doctor(doctor_id):
     doctor = doctor_repository.get_by_id(db.session, doctor_id)
     if not doctor:
         return jsonify({"message": "Profissional não encontrado"}), 404
-    return jsonify(doctor.to_dict(include_shifts_count=True))
+    return jsonify(doctor.to_public_dict(include_shifts_count=True))
 
 
 @doctor_bp.route("/", methods=["POST"])
@@ -68,6 +68,11 @@ def create_doctor():
             jsonify({"message": "Dados incompletos", "missing": missing}),
             400,
         )
+
+    if not data.get("accepted_terms"):
+        return jsonify(
+            {"message": "É necessário aceitar a Política de Privacidade e os Termos de Uso"}
+        ), 400
 
     error, profession = validate_profession_payload(
         data.get("profession") or "doctor",
@@ -152,7 +157,8 @@ def update_doctor(current_user):
 
 
 @doctor_bp.route("/upload-photo", methods=["POST"])
-def upload_photo():
+@token_required
+def upload_photo(current_user):
     if "photo" not in request.files or (file := request.files["photo"]).filename == "":
         return jsonify({"error": "Nenhum arquivo válido enviado"}), 400
 
@@ -164,4 +170,8 @@ def upload_photo():
     safe_name = secure_filename(unique_name)
     file.save(os.path.join(UPLOAD_FOLDER, safe_name))
 
-    return jsonify({"photo_url": f"{request.host_url}/static/uploads/{safe_name}"})
+    photo_url = f"{request.host_url.rstrip('/')}/static/uploads/{safe_name}"
+    current_user.photo_url = photo_url
+    db.session.commit()
+
+    return jsonify({"photo_url": photo_url})
