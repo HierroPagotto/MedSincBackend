@@ -175,23 +175,24 @@ def _resolve_attendance_fields(data: dict, doctor_id: int, existing=None):
     raw_date = pick("date")
     attendance_date = raw_date if isinstance(raw_date, date) else parse_date(raw_date)
 
+    fields["location"] = clean_text(pick("location"), 150)
+
     if kind == KIND_SHIFT:
         shift_id = _parse_int(pick("shift_id"))
-        if not shift_id:
-            return None, _error("Selecione o plantão do atendimento")
-        shift = (
-            db.session.query(Shift)
-            .filter(Shift.id == shift_id, Shift.doctor_id == doctor_id)
-            .first()
-        )
-        if not shift:
-            return None, _error("Plantão não encontrado")
-        fields["shift_id"] = shift_id
+        fields["shift_id"] = None
+        if shift_id:
+            shift = (
+                db.session.query(Shift)
+                .filter(Shift.id == shift_id, Shift.doctor_id == doctor_id)
+                .first()
+            )
+            if not shift:
+                return None, _error("Plantão não encontrado")
+            fields["shift_id"] = shift_id
+            if not attendance_date:
+                attendance_date = shift.date
         fields["value"] = None
         fields["payment_status"] = None
-        fields["location"] = None
-        if not attendance_date:
-            attendance_date = shift.date
     else:
         fields["shift_id"] = None
         raw_value = pick("value")
@@ -203,7 +204,6 @@ def _resolve_attendance_fields(data: dict, doctor_id: int, existing=None):
         if status not in VALID_PAYMENT_STATUSES:
             return None, _error("Status de pagamento inválido")
         fields["payment_status"] = status
-        fields["location"] = clean_text(pick("location"), 150)
 
     if not attendance_date:
         return None, _error("Data do atendimento inválida")
