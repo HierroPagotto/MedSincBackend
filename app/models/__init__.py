@@ -5,6 +5,8 @@ from .shift import Shift
 from .shift_expense import ShiftExpense
 from .personal_expense import PersonalExpense
 from .expense_payment_method import ExpensePaymentMethod
+from .patient import Patient
+from .attendance import Attendance
 from .payment import Payment
 from .financial_goal import FinancialGoal
 from .user import User
@@ -23,6 +25,8 @@ __all__ = [
     "ShiftExpense",
     "PersonalExpense",
     "ExpensePaymentMethod",
+    "Patient",
+    "Attendance",
     "Payment",
     "FinancialGoal",
     "User",

@@ -17,6 +17,8 @@ from app.models.shift import Shift
 from app.models.shift_expense import ShiftExpense
 from app.models.user import User
 from app.models.expense_payment_method import ExpensePaymentMethod
+from app.models.attendance import Attendance
+from app.models.patient import Patient
 
 
 def delete_doctor_account(db: Session, doctor: Doctor) -> None:
@@ -36,6 +38,11 @@ def delete_doctor_account(db: Session, doctor: Doctor) -> None:
     db.query(DoctorPracticeArea).filter_by(doctor_id=doctor_id).delete(
         synchronize_session=False
     )
+
+    db.query(Attendance).filter_by(doctor_id=doctor_id).delete(
+        synchronize_session=False
+    )
+    db.query(Patient).filter_by(doctor_id=doctor_id).delete(synchronize_session=False)
 
     shift_ids = [
         row.id for row in db.query(Shift.id).filter_by(doctor_id=doctor_id).all()
@@ -91,6 +98,19 @@ def export_doctor_data(db: Session, doctor: Doctor) -> dict:
         .filter(PersonalExpense.doctor_id == doctor.id)
         .all()
     )
+    patients = (
+        db.query(Patient)
+        .filter(Patient.doctor_id == doctor.id)
+        .order_by(Patient.name.asc())
+        .all()
+    )
+    attendances = (
+        db.query(Attendance)
+        .options(joinedload(Attendance.shift).joinedload(Shift.hospital))
+        .filter(Attendance.doctor_id == doctor.id)
+        .order_by(Attendance.date.asc())
+        .all()
+    )
     goals = db.query(FinancialGoal).filter(FinancialGoal.user_id == doctor.id).all()
     applications = (
         db.query(OpportunityApplication)
@@ -111,6 +131,8 @@ def export_doctor_data(db: Session, doctor: Doctor) -> dict:
         "profile": doctor.to_dict(include_shifts_count=True),
         "shifts": [s.to_dict() for s in shifts],
         "personal_expenses": [e.to_dict() for e in personal],
+        "patients": [p.to_dict() for p in patients],
+        "attendances": [a.to_dict(include_patient=False) for a in attendances],
         "financial_goals": [
             {
                 "year": g.year,

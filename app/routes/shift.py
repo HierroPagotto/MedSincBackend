@@ -13,7 +13,7 @@ from app.schemas.payment import PaymentCreate
 from app.database import db
 from app.utils.auth import token_required
 from app.models.financial_goal import FinancialGoal
-from app.models.shift import SOURCE_MARKETPLACE
+from app.models.shift import SOURCE_MARKETPLACE, SHIFT_TYPES, VALID_SHIFT_TYPES
 from app.models.shift_expense import EXPENSE_CATEGORIES
 from app.utils.schedule import doctor_has_conflicting_shift
 from app.services.notification_service import notification_service
@@ -34,6 +34,21 @@ def _is_marketplace_shift(shift) -> bool:
     return getattr(shift, "source", None) == SOURCE_MARKETPLACE or bool(
         getattr(shift, "opportunity_id", None)
     )
+
+
+def _normalize_shift_type(data: dict):
+    """Returns an error response when shift_type is invalid; normalizes '' to None."""
+    if "shift_type" not in data:
+        return None
+    raw = data.get("shift_type")
+    if raw is None or str(raw).strip() == "":
+        data["shift_type"] = None
+        return None
+    value = str(raw).strip()
+    if value not in VALID_SHIFT_TYPES:
+        return jsonify({"message": "Tipo de plantão inválido"}), 400
+    data["shift_type"] = value
+    return None
 
 
 def _get_owned_shift(current_user, shift_id):
@@ -67,7 +82,10 @@ def _notify_conflict_if_any(doctor, shift) -> None:
 @shift_bp.route("/", methods=["POST"])
 @token_required
 def create_shift(current_user):
-    data = request.get_json()
+    data = request.get_json() or {}
+    err = _normalize_shift_type(data)
+    if err:
+        return err
 
     if "week_days" in data and data["week_days"]:
         shifts = shift_repository.create_multiple_shifts(
@@ -256,15 +274,29 @@ def update_shift(current_user, shift_id):
         return jsonify({"message": "Não autorizado a editar este plantão"}), 403
     if _is_marketplace_shift(shift):
         return jsonify({"message": MARKETPLACE_LOCKED_MSG}), 403
-    data = request.get_json()
+    data = request.get_json() or {}
+    err = _normalize_shift_type(data)
+    if err:
+        return err
+    clear_shift_type = "shift_type" in data and data["shift_type"] is None
     update_data = ShiftUpdate(**data)
     previous_date = shift.date
+    if clear_shift_type:
+        shift.shift_type = None
     shift_repository.update(db.session, shift, update_data)
     if shift.date != previous_date:
         expense_repository.sync_dates_for_shift(db.session, shift.id, shift.date)
     _notify_conflict_if_any(current_user, shift)
     return jsonify(
         {"message": "Plantão atualizado com sucesso", "shift": shift.to_dict()}
+    )
+
+
+@shift_bp.route("/types", methods=["GET"])
+@token_required
+def list_shift_types(current_user):
+    return jsonify(
+        [{"value": key, "label": label} for key, label in SHIFT_TYPES.items()]
     )
 
 
@@ -333,7 +365,11 @@ def update_shift_expense(current_user, shift_id, expense_id):
         return jsonify({"message": "Plantão não encontrado"}), 404
 
     expense = expense_repository.get_by_id(db.session, expense_id)
-    if not expense or expense.shift_id != shift.id or expense.doctor_id != current_user.id:
+    if (
+        not expense
+        or expense.shift_id != shift.id
+        or expense.doctor_id != current_user.id
+    ):
         return jsonify({"message": "Gasto não encontrado"}), 404
 
     data = request.get_json() or {}
@@ -375,7 +411,11 @@ def delete_shift_expense(current_user, shift_id, expense_id):
         return jsonify({"message": "Plantão não encontrado"}), 404
 
     expense = expense_repository.get_by_id(db.session, expense_id)
-    if not expense or expense.shift_id != shift.id or expense.doctor_id != current_user.id:
+    if (
+        not expense
+        or expense.shift_id != shift.id
+        or expense.doctor_id != current_user.id
+    ):
         return jsonify({"message": "Gasto não encontrado"}), 404
 
     expense_repository.delete(db.session, expense)

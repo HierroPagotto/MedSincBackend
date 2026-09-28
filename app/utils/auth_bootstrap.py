@@ -131,6 +131,8 @@ def ensure_auth_schema() -> None:
         ShiftExpense,
         PersonalExpense,
         ExpensePaymentMethod,
+        Patient,
+        Attendance,
         Payment,
         FinancialGoal,
         ShiftOpportunity,
@@ -158,6 +160,7 @@ def ensure_auth_schema() -> None:
             "shifts", "source", "source VARCHAR(20) NOT NULL DEFAULT 'manual'"
         )
         _add_column_if_missing("shifts", "opportunity_id", "opportunity_id INT NULL")
+        _add_column_if_missing("shifts", "shift_type", "shift_type VARCHAR(30) NULL")
         _add_column_if_missing(
             "shift_opportunities", "payment_date", "payment_date DATE NULL"
         )
@@ -302,6 +305,7 @@ def _seed_system_payment_methods() -> None:
         db.session.commit()
     except Exception:
         db.session.rollback()
+
 
 def backfill_doctor_users() -> None:
     """Cria User para doctors sem user_id, reutilizando o hash de senha atual."""

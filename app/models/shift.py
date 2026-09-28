@@ -18,6 +18,16 @@ import decimal
 SOURCE_MANUAL = "manual"
 SOURCE_MARKETPLACE = "marketplace"
 
+SHIFT_TYPES = {
+    "pronto_atendimento": "Pronto Atendimento",
+    "centro_cirurgico": "Centro Cirúrgico",
+    "enfermaria": "Enfermaria",
+    "uti": "UTI",
+    "outro": "Outro",
+}
+
+VALID_SHIFT_TYPES = frozenset(SHIFT_TYPES.keys())
+
 
 class Shift(db.Model):
     __tablename__ = "shifts"
@@ -35,6 +45,7 @@ class Shift(db.Model):
     payment_date = Column(Date, nullable=True)
     status = Column(String(20), nullable=False)
     source = Column(String(20), nullable=False, default=SOURCE_MANUAL)
+    shift_type = Column(String(30), nullable=True)
     opportunity_id = Column(
         Integer, ForeignKey("shift_opportunities.id"), nullable=True, index=True
     )
@@ -51,6 +62,17 @@ class Shift(db.Model):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    attendances = relationship(
+        "Attendance",
+        back_populates="shift",
+        lazy="dynamic",
+    )
+
+    @property
+    def shift_type_label(self):
+        if not self.shift_type:
+            return None
+        return SHIFT_TYPES.get(self.shift_type, self.shift_type)
 
     def to_dict(self):
         result = {}
@@ -71,5 +93,7 @@ class Shift(db.Model):
         expenses_total = sum(float(e.amount) for e in expenses)
         result["expenses_total"] = expenses_total
         result["net_value"] = float(self.value) - expenses_total
+        result["shift_type_label"] = self.shift_type_label
+        result["attendances_count"] = self.attendances.count() if self.id else 0
 
         return result

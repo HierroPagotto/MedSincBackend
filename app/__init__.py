@@ -57,6 +57,7 @@ def create_app():
         notifications_bp,
         jobs_bp,
         expenses_bp,
+        patients_bp,
     )
 
     app.register_blueprint(static_bp, url_prefix="/static")
@@ -68,6 +69,7 @@ def create_app():
     app.register_blueprint(shift_bp, url_prefix="/api/shifts/")
     app.register_blueprint(payment_bp, url_prefix="/api/payments/")
     app.register_blueprint(expenses_bp, url_prefix="/api/expenses")
+    app.register_blueprint(patients_bp, url_prefix="/api/patients")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(notifications_bp, url_prefix="/api/notifications")
     app.register_blueprint(jobs_bp, url_prefix="/api/jobs")
