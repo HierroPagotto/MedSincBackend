@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from flask import Blueprint, request, jsonify
 from app.repositories.shift_repository import ShiftRepository
@@ -51,6 +51,51 @@ def _normalize_shift_type(data: dict):
     return None
 
 
+def _take_payment_days_after(data: dict):
+    """Removes payment_days_after from the payload. Returns (days | None, error)."""
+    if "payment_days_after" not in data:
+        return None, None
+    raw = data.pop("payment_days_after")
+    if raw is None or raw == "":
+        return None, None
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        return None, (jsonify({"message": "Informe um número de dias válido"}), 400)
+    if days < 0 or days > 365:
+        return None, (
+            jsonify({"message": "Os dias após o plantão devem ficar entre 0 e 365"}),
+            400,
+        )
+    return days, None
+
+
+def _as_shift_date(raw):
+    if raw is None or raw == "":
+        return None
+    if hasattr(raw, "year") and hasattr(raw, "month") and not hasattr(raw, "hour"):
+        return raw
+    if isinstance(raw, datetime):
+        return raw.date()
+    try:
+        return datetime.strptime(str(raw)[:10], "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _apply_payment_offset(data: dict, days, fallback_date=None):
+    if days is None:
+        return None
+    shift_date = _as_shift_date(data.get("date", fallback_date))
+    if shift_date is None:
+        return (
+            jsonify({"message": "Informe a data do plantão para calcular o pagamento"}),
+            400,
+        )
+    data["payment_date"] = shift_date + timedelta(days=days)
+    return None
+
+
 def _get_owned_shift(current_user, shift_id):
     shift = shift_repository.get_by_id(db.session, shift_id)
     if not shift or shift.doctor_id != current_user.id:
@@ -86,10 +131,16 @@ def create_shift(current_user):
     err = _normalize_shift_type(data)
     if err:
         return err
+    payment_days_after, err = _take_payment_days_after(data)
+    if err:
+        return err
 
     if "week_days" in data and data["week_days"]:
         shifts = shift_repository.create_multiple_shifts(
-            db.session, data, current_user.id
+            db.session,
+            data,
+            current_user.id,
+            payment_days_after=payment_days_after,
         )
 
         for shift in shifts:
@@ -99,6 +150,9 @@ def create_shift(current_user):
 
         return {"message": f"{len(shifts)} plantões criados com sucesso!"}
     else:
+        err = _apply_payment_offset(data, payment_days_after)
+        if err:
+            return err
         shift_data = ShiftCreate(**data)
         shift = shift_repository.create(db.session, shift_data, current_user.id)
 
@@ -276,6 +330,12 @@ def update_shift(current_user, shift_id):
         return jsonify({"message": MARKETPLACE_LOCKED_MSG}), 403
     data = request.get_json() or {}
     err = _normalize_shift_type(data)
+    if err:
+        return err
+    payment_days_after, err = _take_payment_days_after(data)
+    if err:
+        return err
+    err = _apply_payment_offset(data, payment_days_after, fallback_date=shift.date)
     if err:
         return err
     clear_shift_type = "shift_type" in data and data["shift_type"] is None

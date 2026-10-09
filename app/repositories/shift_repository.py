@@ -28,9 +28,10 @@ class ShiftRepository:
         return db_shift
 
     def create_multiple_shifts(
-        self, db: Session, shift_data: dict, doctor_id: int
+        self, db: Session, shift_data: dict, doctor_id: int, payment_days_after=None
     ) -> list:
         result_shifts = []
+        shift_data.pop("payment_days_after", None)
 
         if shift_data.get("week_days") and isinstance(shift_data["week_days"], list):
             for day in shift_data["week_days"]:
@@ -48,6 +49,10 @@ class ShiftRepository:
                 del single_shift_data["week_days"]
                 if "end_date" in single_shift_data:
                     del single_shift_data["end_date"]
+                if payment_days_after is not None:
+                    single_shift_data["payment_date"] = single_shift_data[
+                        "date"
+                    ] + timedelta(days=payment_days_after)
 
                 shift = ShiftCreate(**single_shift_data)
                 db_shift = self.create(db, shift, doctor_id)
