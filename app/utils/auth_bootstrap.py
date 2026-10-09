@@ -146,6 +146,11 @@ def ensure_auth_schema() -> None:
         _create_all_safe()
 
         _add_column_if_missing("doctors", "user_id", "user_id INT NULL")
+        _add_column_if_missing(
+            "doctors",
+            "graduation_university",
+            "graduation_university VARCHAR(150) NULL",
+        )
 
         _make_doctor_signup_columns_nullable()
 

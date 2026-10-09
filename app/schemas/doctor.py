@@ -16,6 +16,7 @@ class DoctorCreate:
     crm: Optional[str] = None
     crm_state: Optional[str] = None
     graduation_year: Optional[int] = None
+    graduation_university: Optional[str] = None
     city: Optional[str] = None
     phone: Optional[str] = None
     procedures: Optional[List[str]] = None
@@ -55,6 +56,7 @@ class DoctorUpdate:
     crm: Optional[str] = None
     crm_state: Optional[str] = None
     graduation_year: Optional[int] = None
+    graduation_university: Optional[str] = None
     city: Optional[str] = None
     phone: Optional[str] = None
     main_specialty: Optional[str] = None

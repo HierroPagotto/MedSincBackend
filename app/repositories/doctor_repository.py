@@ -108,6 +108,7 @@ class DoctorRepository:
             crm=synced["crm"],
             crm_state=synced["crm_state"],
             graduation_year=doctor.graduation_year,
+            graduation_university=self._blank_to_none(doctor.graduation_university),
             city=self._blank_to_none(doctor.city),
             phone=self._blank_to_none(doctor.phone),
             main_specialty=main_specialty,

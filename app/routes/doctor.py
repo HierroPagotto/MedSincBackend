@@ -11,6 +11,24 @@ from werkzeug.utils import secure_filename
 doctor_bp = Blueprint("doctor", __name__)
 doctor_repository = DoctorRepository()
 
+
+def _take_graduation_university(data):
+    if "graduation_university" not in data:
+        return None
+    raw = data.get("graduation_university")
+    text = str(raw).strip() if raw is not None else ""
+    if len(text) < 3 or len(text) > 150:
+        return (
+            jsonify(
+                {
+                    "message": "Informe a universidade de formação (3 a 150 caracteres)"
+                }
+            ),
+            400,
+        )
+    data["graduation_university"] = text
+    return None
+
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
@@ -97,6 +115,10 @@ def create_doctor():
         if key in data and (data[key] is None or str(data[key]).strip() == ""):
             data[key] = None
 
+    university_error = _take_graduation_university(data)
+    if university_error:
+        return university_error
+
     allowed = {f.name for f in fields(DoctorCreate)}
     payload = {k: v for k, v in data.items() if k in allowed}
 
@@ -147,6 +169,10 @@ def update_doctor(current_user):
         if error:
             return jsonify({"message": error}), 400
         data["profession"] = profession
+
+    university_error = _take_graduation_university(data)
+    if university_error:
+        return university_error
 
     allowed = {f.name for f in fields(DoctorUpdate)}
     payload = {k: v for k, v in data.items() if k in allowed}

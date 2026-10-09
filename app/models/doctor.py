@@ -26,6 +26,7 @@ class Doctor(db.Model):
     crm = Column(String(20), unique=True, nullable=True)
     crm_state = Column(String(2), nullable=True)
     graduation_year = Column(Integer, nullable=True)
+    graduation_university = Column(String(150), nullable=True)
     city = Column(String(100), nullable=True)
     phone = Column(String(20), nullable=True)
 
@@ -141,6 +142,7 @@ class Doctor(db.Model):
             "city": self.city,
             "state": self.state,
             "graduation_year": self.graduation_year,
+            "graduation_university": self.graduation_university,
             "years_of_experience": self.years_of_experience,
             "acls": bool(self.acls),
             "bls": bool(self.bls),
