@@ -161,27 +161,44 @@ class PersonalExpenseRepository:
         expense_date: date,
         recurrence: str = "none",
         payment_method_id: int | None = None,
+        installments: int = 1,
     ) -> PersonalExpense:
         recurrence = recurrence or "none"
+        count = installments if installments and installments > 1 else 1
+        if count > 1:
+            recurrence = "none"
+
         group_id = None
         is_origin = False
+        installment_group_id = None
         if recurrence != "none":
             group_id = str(uuid.uuid4())
             is_origin = True
+        elif count > 1:
+            installment_group_id = str(uuid.uuid4())
 
-        expense = PersonalExpense(
-            doctor_id=doctor_id,
-            category=category,
-            amount=amount,
-            description=description,
-            expense_date=expense_date,
-            recurrence=recurrence,
-            payment_method_id=payment_method_id,
-            recurrence_group_id=group_id,
-            is_recurrence_origin=is_origin,
-            recurrence_active=True,
-        )
-        db.add(expense)
+        expense: PersonalExpense | None = None
+        for index in range(count):
+            row = PersonalExpense(
+                doctor_id=doctor_id,
+                category=category,
+                amount=amount,
+                description=description,
+                expense_date=add_months(expense_date, index),
+                recurrence=recurrence,
+                payment_method_id=payment_method_id,
+                recurrence_group_id=group_id,
+                is_recurrence_origin=is_origin and index == 0,
+                recurrence_active=True,
+                installment_number=(index + 1) if count > 1 else None,
+                installment_count=count if count > 1 else None,
+                installment_group_id=installment_group_id,
+            )
+            db.add(row)
+            if expense is None:
+                expense = row
+        if expense is None:
+            raise ValueError("Nenhuma parcela foi criada")
         db.commit()
         db.refresh(expense)
 

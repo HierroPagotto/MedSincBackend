@@ -75,6 +75,9 @@ class PersonalExpense(db.Model):
     recurrence_group_id = Column(String(36), nullable=True, index=True)
     is_recurrence_origin = Column(Boolean, nullable=False, default=False)
     recurrence_active = Column(Boolean, nullable=False, default=True)
+    installment_number = Column(Integer, nullable=True)
+    installment_count = Column(Integer, nullable=True)
+    installment_group_id = Column(String(36), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -102,6 +105,12 @@ class PersonalExpense(db.Model):
         result["payment_method_name"] = (
             self.payment_method.name if self.payment_method else None
         )
+        if self.installment_number and self.installment_count:
+            result["installment_label"] = (
+                f"{self.installment_number}/{self.installment_count}"
+            )
+        else:
+            result["installment_label"] = None
         result["source"] = "personal"
         result["shift_id"] = None
         return result

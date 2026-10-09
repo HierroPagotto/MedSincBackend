@@ -262,6 +262,21 @@ def ensure_auth_schema() -> None:
             "recurrence_active",
             "recurrence_active BOOLEAN NOT NULL DEFAULT 1",
         )
+        _add_column_if_missing(
+            "personal_expenses",
+            "installment_number",
+            "installment_number INT NULL",
+        )
+        _add_column_if_missing(
+            "personal_expenses",
+            "installment_count",
+            "installment_count INT NULL",
+        )
+        _add_column_if_missing(
+            "personal_expenses",
+            "installment_group_id",
+            "installment_group_id VARCHAR(36) NULL",
+        )
         _run_ddl_ignore_exists(
             "CREATE INDEX ix_personal_expenses_payment_method_id "
             "ON personal_expenses (payment_method_id)"
@@ -269,6 +284,10 @@ def ensure_auth_schema() -> None:
         _run_ddl_ignore_exists(
             "CREATE INDEX ix_personal_expenses_recurrence_group_id "
             "ON personal_expenses (recurrence_group_id)"
+        )
+        _run_ddl_ignore_exists(
+            "CREATE INDEX ix_personal_expenses_installment_group_id "
+            "ON personal_expenses (installment_group_id)"
         )
         _seed_system_payment_methods()
 

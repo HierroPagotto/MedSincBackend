@@ -30,6 +30,18 @@ def _parse_expense_date(raw) -> date | None:
         return None
 
 
+def _parse_installments(raw) -> int | None:
+    if raw is None or raw == "":
+        return 1
+    try:
+        count = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if count < 1 or count > 36:
+        return None
+    return count
+
+
 def _resolve_payment_method_id(data, doctor_id: int):
     if "payment_method_id" not in data:
         return ..., None
@@ -156,6 +168,14 @@ def create_expense(current_user):
     if recurrence is None:
         return jsonify({"message": "Recorrência inválida"}), 400
 
+    installments = _parse_installments(data.get("installments", 1))
+    if installments is None:
+        return jsonify({"message": "Número de parcelas deve ser de 1 a 36"}), 400
+    if installments > 1 and recurrence != "none":
+        return jsonify(
+            {"message": "Parcelas e recorrência não podem ser usadas juntas"}
+        ), 400
+
     payment_method_id, err = _resolve_payment_method_id(data, current_user.id)
     if err:
         return err
@@ -175,9 +195,16 @@ def create_expense(current_user):
         expense_date=expense_date,
         recurrence=recurrence,
         payment_method_id=payment_method_id,
+        installments=installments,
     )
     expense = personal_repo.get_by_id(db.session, expense.id)
-    return jsonify({"message": "Gasto adicionado", "expense": expense.to_dict()}), 201
+    return jsonify(
+        {
+            "message": "Gasto adicionado",
+            "expense": expense.to_dict(),
+            "installments_created": installments,
+        }
+    ), 201
 
 
 @expenses_bp.route("/<int:expense_id>", methods=["PUT"])
