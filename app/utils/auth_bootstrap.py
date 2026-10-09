@@ -161,6 +161,11 @@ def ensure_auth_schema() -> None:
         )
         _add_column_if_missing("shifts", "opportunity_id", "opportunity_id INT NULL")
         _add_column_if_missing("shifts", "shift_type", "shift_type VARCHAR(30) NULL")
+        _add_column_if_missing("patients", "phone", "phone VARCHAR(20) NULL")
+        _add_column_if_missing("patients", "cpf", "cpf VARCHAR(11) NULL")
+        _run_ddl_ignore_exists(
+            "CREATE UNIQUE INDEX uq_patients_doctor_cpf ON patients (doctor_id, cpf)"
+        )
         _add_column_if_missing(
             "shift_opportunities", "payment_date", "payment_date DATE NULL"
         )

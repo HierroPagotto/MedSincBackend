@@ -11,6 +11,7 @@ from app.models.attendance import (
     VALID_ATTENDANCE_KINDS,
     VALID_PAYMENT_STATUSES,
 )
+from app.models.patient import parse_cpf, parse_phone
 from app.models.shift import Shift
 from app.repositories.patient_repository import (
     AttendanceRepository,
@@ -49,6 +50,16 @@ def _parse_patient_payload(data: dict, partial: bool):
             fields["birth_date"] = birth_date
     if not partial or "health_plan" in data:
         fields["health_plan"] = clean_text(data.get("health_plan"), 100)
+    if not partial or "phone" in data:
+        phone, phone_error = parse_phone(data.get("phone"))
+        if phone_error:
+            return None, _error(phone_error)
+        fields["phone"] = phone
+    if not partial or "cpf" in data:
+        cpf, cpf_error = parse_cpf(data.get("cpf"))
+        if cpf_error:
+            return None, _error(cpf_error)
+        fields["cpf"] = cpf
     if partial and "active" in data:
         fields["active"] = bool(data.get("active"))
     return fields, None
@@ -87,6 +98,10 @@ def create_patient(current_user):
     fields, err = _parse_patient_payload(data, partial=False)
     if err:
         return err
+    if fields.get("cpf") and patient_repo.cpf_in_use(
+        db.session, current_user.id, fields["cpf"]
+    ):
+        return _error("Já existe um paciente com este CPF")
     patient = patient_repo.create(db.session, current_user.id, **fields)
     item = patient.to_dict()
     item["attendances_count"] = 0
@@ -112,6 +127,10 @@ def update_patient(current_user, patient_id):
     fields, err = _parse_patient_payload(data, partial=True)
     if err:
         return err
+    if fields.get("cpf") and patient_repo.cpf_in_use(
+        db.session, current_user.id, fields["cpf"], exclude_id=patient.id
+    ):
+        return _error("Já existe um paciente com este CPF")
     patient = patient_repo.update(db.session, patient, **fields)
     return jsonify(
         {

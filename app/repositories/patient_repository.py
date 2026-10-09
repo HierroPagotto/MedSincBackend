@@ -55,9 +55,13 @@ class PatientRepository:
             query = query.filter(Patient.active.is_(True))
         if search:
             term = f"%{search.strip()}%"
-            query = query.filter(
-                or_(Patient.name.ilike(term), Patient.health_plan.ilike(term))
-            )
+            filters = [Patient.name.ilike(term), Patient.health_plan.ilike(term)]
+            digits = "".join(ch for ch in search if ch.isdigit())
+            if digits:
+                digit_term = f"%{digits}%"
+                filters.append(Patient.phone.ilike(digit_term))
+                filters.append(Patient.cpf.ilike(digit_term))
+            query = query.filter(or_(*filters))
         return query.order_by(Patient.name.asc()).all()
 
     def attendance_counts(self, db: Session, doctor_id: int) -> dict[int, int]:
@@ -68,6 +72,16 @@ class PatientRepository:
             .all()
         )
         return {patient_id: count for patient_id, count in rows}
+
+    def cpf_in_use(
+        self, db: Session, doctor_id: int, cpf: str, exclude_id: int | None = None
+    ) -> bool:
+        query = db.query(Patient.id).filter(
+            Patient.doctor_id == doctor_id, Patient.cpf == cpf
+        )
+        if exclude_id is not None:
+            query = query.filter(Patient.id != exclude_id)
+        return query.first() is not None
 
     def get_owned(self, db: Session, patient_id: int, doctor_id: int) -> Patient | None:
         return (
